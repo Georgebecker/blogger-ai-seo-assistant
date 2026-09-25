@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Blogger AI SEO Assistant",
+  "version": "1.0.0",
+  "description": "Assistente de SEO e acessibilidade para o editor do Blogger: otimiza o texto, gera ALT para imagens e audita o post.",
+  "minimum_chrome_version": "102",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "*://*.blogger.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "*://*.googleusercontent.com/*",
+    "*://*.blogspot.com/*"
+  ],
+  "optional_host_permissions": ["*://*/*"],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://draft.blogger.com/blog/post/*",
+        "*://*.blogger.com/blog/post/*"
+      ],
+      "js": ["src/content/content.ts"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Blogger AI SEO Assistant",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

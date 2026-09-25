@@ -1,0 +1,205 @@
+/* content.css — estilos da UI injetada.
+   Tudo vive sob #bai-seo-root, com !important nos pontos de layout,
+   para nao sofrer com os estilos/filtros do Blogger (DevLog, item 1). */
+
+#bai-seo-root {
+  position: fixed !important;
+  inset: auto 0 0 auto !important;
+  z-index: 2147483646 !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #111827;
+}
+
+#bai-seo-root *, #bai-seo-root *::before, #bai-seo-root *::after { box-sizing: border-box; }
+#bai-seo-root button { font: inherit; }
+#bai-seo-root .bai-oculto { display: none !important; }
+
+.bai-fab {
+  position: fixed !important;
+  right: 16px !important;
+  bottom: 16px !important;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: #4f46e5;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+  z-index: 2147483647 !important;
+}
+.bai-fab:hover { background: #4338ca; }
+
+.bai-painel {
+  position: fixed !important;
+  right: 16px !important;
+  bottom: 16px !important;
+  width: 372px;
+  max-width: calc(100vw - 32px);
+  max-height: min(620px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, .28);
+  overflow: hidden;
+  z-index: 2147483647 !important;
+}
+
+.bai-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+}
+.bai-titulo { flex: 1; font-weight: 700; font-size: 13px; letter-spacing: .2px; }
+.bai-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .18);
+  white-space: nowrap;
+}
+.bai-pill.bai-ok { background: #16a34a; }
+.bai-pill.bai-aviso { background: #d97706; }
+.bai-pill.bai-falha { background: #dc2626; }
+.bai-fechar {
+  border: 0;
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.bai-fechar:hover { background: rgba(255, 255, 255, .28); }
+
+.bai-abas {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+.bai-aba {
+  flex: 1;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  padding: 7px 8px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  color: #4b5563;
+  font-weight: 600;
+}
+.bai-aba.bai-ativa { background: #fff; border-color: #e5e7eb; color: #4f46e5; }
+
+.bai-corpo { padding: 12px 14px 14px; overflow-y: auto; }
+
+.bai-campo { margin-bottom: 10px; }
+.bai-rotulo { display: block; font-weight: 600; margin-bottom: 4px; color: #374151; }
+.bai-entrada {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+}
+.bai-entrada:focus { outline: 2px solid #c7d2fe; border-color: #818cf8; }
+
+.bai-linha-botoes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.bai-botao {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #111827;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.bai-botao:hover { background: #f3f4f6; }
+.bai-botao:disabled { opacity: .55; cursor: default; }
+.bai-botao.bai-principal { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+.bai-botao.bai-principal:hover { background: #4338ca; }
+
+.bai-status { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: #f3f4f6; color: #374151; font-size: 12px; }
+.bai-status.bai-ok { background: #ecfdf5; color: #166534; }
+.bai-status.bai-aviso { background: #fffbeb; color: #92400e; }
+.bai-status.bai-erro { background: #fef2f2; color: #991b1b; }
+.bai-status:empty { display: none; }
+
+.bai-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; margin-top: 10px; background: #fff; }
+.bai-card-cabeco { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 6px; }
+.bai-card-cabeco strong { font-size: 12.5px; }
+.bai-card-cabeco span { font-size: 11px; color: #6b7280; }
+.bai-texto {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f9fafb;
+  border: 1px solid #f3f4f6;
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 150px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+.bai-lista { margin: 6px 0 0; padding-left: 18px; }
+.bai-lista li { margin: 3px 0; }
+.bai-dica { margin: 6px 0 0; font-size: 11px; color: #6b7280; }
+
+.bai-acoes { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.bai-acoes .bai-botao { padding: 6px 10px; font-size: 12px; }
+
+.bai-img-item {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+  margin-top: 10px;
+}
+.bai-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; background: #f3f4f6; }
+.bai-img-info strong { display: block; font-size: 12.5px; }
+.bai-dominio { display: block; font-size: 11px; color: #6b7280; word-break: break-all; margin-bottom: 4px; }
+.bai-sugestao { font-size: 12px; background: #eef2ff; border-radius: 8px; padding: 6px 8px; margin: 6px 0; }
+.bai-sugestao b { color: #4338ca; }
+.bai-acoes-img { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.bai-acoes-img .bai-botao { padding: 5px 9px; font-size: 11.5px; }
+
+.bai-resumo { font-weight: 700; padding: 10px; border-radius: 10px; margin-bottom: 8px; }
+.bai-resumo.bai-ok { background: #ecfdf5; color: #166534; }
+.bai-resumo.bai-aviso { background: #fffbeb; color: #92400e; }
+.bai-resumo.bai-falha { background: #fef2f2; color: #991b1b; }
+
+.bai-check-item {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.bai-check-rotulo { font-weight: 600; font-size: 12.5px; }
+.bai-check-detalhe { font-size: 11.5px; color: #6b7280; word-break: break-word; }
+.bai-ponto { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; background: #9ca3af; }
+.bai-ok .bai-ponto { background: #16a34a; }
+.bai-aviso .bai-ponto { background: #d97706; }
+.bai-falha .bai-ponto, .bai-erro .bai-ponto { background: #dc2626; }
+.bai-info .bai-ponto { background: #6b7280; }
+
+.bai-rodape {
+  padding: 8px 14px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.bai-copia { position: fixed; top: -1000px; left: -1000px; opacity: 0; }

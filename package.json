@@ -1,0 +1,21 @@
+{
+  "name": "blogger-ai-seo-assistant",
+  "displayName": "Blogger AI SEO Assistant",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Extensão Chrome (Manifest V3) que integra SEO e acessibilidade ao editor do Blogger com IA (BYOK).",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "icons": "python tools/gerar_icones.py",
+    "test:crypto": "node tools/teste_criptografia.ts"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^3.0.0",
+    "@types/chrome": "^0.3.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.1"
+  }
+}
