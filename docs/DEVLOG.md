@@ -57,8 +57,46 @@ dentro de iframes aninhados, com filtros de CSS que removem classes externas.
   `https://generativelanguage.googleapis.com/*` (além dos domínios de imagem do Blogger,
   usados para baixar as fotos antes de enviá-las à IA).
 
+## Para agentes de IA (leia antes de mexer)
+
+Este documento existe para ancorar quem for editar o projeto (humano ou agente). Antes de
+qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra de funcionalidade.
+
+**Regras invioláveis**
+
+1. `fetch` para domínios externos só no service worker (`src/background/service-worker.ts`).
+   O content script herda a origem da página e seria bloqueado por CORS.
+2. A chave da API nunca pode circular no content script nem ser registrada em log.
+   A criptografia fica em `src/lib/crypto-utils.ts` e é usada só no service worker.
+3. Todo contrato de mensagem novo entra em `src/lib/messages.ts` (fonte única) e é atendido
+   em `tratarMensagem()` no service worker; o listener sempre devolve `true` (resposta assíncrona).
+4. Estado crítico vai imediatamente para `chrome.storage.local`; a chave desbloqueada fica
+   apenas em `chrome.storage.session` (nunca em texto puro no `local`).
+5. Não usar classes voláteis do Blogger em seletores; preferir atributos estáveis
+   (`aria-label`, `placeholder`, `[contenteditable]`) e as heurísticas de `src/content/content.ts`.
+6. Conteúdo vindo da IA nunca entra como HTML sem escape; textos entram por `textContent`
+   ou `execCommand` com escape (proteção contra XSS).
+7. Editar apenas `src/`, `manifest.json`, `public/` e `tools/`; nunca mexer em `dist/`
+   (gerado pelo build) nem em `node_modules/`.
+8. Antes de considerar pronto: `npm run typecheck`, `npm run build` e, se tocar em
+   criptografia, `npm run test:crypto`.
+9. Sem emojis em código, mensagens, commits ou docs; textos de interface em pt-BR.
+10. `manifest.json` é a fonte da verdade; caminhos nele apontam para as fontes
+    (o plugin CRXJS reescreve para o `dist/` no build).
+
+**Mapa rápido**
+
+| Pergunta | Onde olhar |
+|---|---|
+| Como o editor é localizado (inclusive em iframe)? | `janelasAlcancaveis()` e `escolherEditor()` em `src/content/content.ts` |
+| Onde ficam os prompts da IA? | `montarPromptTexto()` e `montarPromptImagem()` no service worker |
+| Como a chave é guardada e desbloqueada? | `salvarChave()` e `desbloquear()` no service worker |
+| Quais comandos o fundo aceita? | união `MensagemParaFundo` em `src/lib/messages.ts` |
+| Como compilar e testar? | seção "Como compilar" do `README.md` |
+
 ## Linha do tempo
 
+- **25/09/2026** — Seção "Para agentes de IA" adicionada (ancoragem para uso com DeepSeek).
 - **25/09/2026** — Estrutura inicial: TypeScript + Vite + CRXJS; manifest V3; criptografia
   AES-GCM/PBKDF2; service worker com Gemini (texto + visão) e proxy de links; content script
   com painel de 3 abas (Texto, Imagens, Checklist); popup BYOK com permissões opcionais.
