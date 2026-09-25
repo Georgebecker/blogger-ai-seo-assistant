@@ -9,7 +9,11 @@
 
 import { encryptKey, decryptKey, type PacoteChave } from '../lib/crypto-utils';
 import type {
+  CriacaoPost,
+  LinkInterno,
   MensagemParaFundo,
+  PerfilEstilo,
+  PostDoBlog,
   Provedor,
   ResultadoLink,
   ResultadoLinks,
@@ -63,6 +67,37 @@ const ESQUEMA_ALT = {
   propertyOrdering: ['alt', 'caption'],
 };
 
+const ESQUEMA_POST = {
+  type: 'OBJECT',
+  properties: {
+    titulo: { type: 'STRING', description: 'Título do post com 50 a 60 caracteres e a palavra-chave no início.' },
+    meta_descricao: { type: 'STRING', description: 'Meta descrição com 150 a 160 caracteres.' },
+    slug: { type: 'STRING', description: 'Endereço curto sugerido, palavras separadas por hífen.' },
+    palavra_chave: { type: 'STRING' },
+    palavras_secundarias: { type: 'ARRAY', items: { type: 'STRING' } },
+    corpo_html: { type: 'STRING', description: 'Corpo do post em HTML simples.' },
+    links_internos: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { ancora: { type: 'STRING' }, url: { type: 'STRING' } },
+        required: ['ancora', 'url'],
+      },
+    },
+    observacoes: { type: 'ARRAY', items: { type: 'STRING' } },
+  },
+  required: [
+    'titulo',
+    'meta_descricao',
+    'slug',
+    'palavra_chave',
+    'palavras_secundarias',
+    'corpo_html',
+    'links_internos',
+    'observacoes',
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // Mensagens
 // ---------------------------------------------------------------------------
@@ -102,6 +137,10 @@ async function tratarMensagem(mensagem: MensagemParaFundo): Promise<unknown> {
       return otimizarTexto(mensagem);
     case 'AI_IMAGE_ALT':
       return gerarAlt(mensagem);
+    case 'AI_APRENDER_ESTILO':
+      return aprenderEstilo(mensagem.blogId);
+    case 'AI_GERAR_POST':
+      return gerarPost(mensagem);
     case 'CHECK_LINKS':
       return verificarLinks(mensagem.urls);
     default:
@@ -540,7 +579,7 @@ function montarPromptImagem(contexto: { titulo: string; palavraChave: string }):
   linhas.push(
     '',
     'Responda SOMENTE com o JSON pedido, sem cercas de código (```).',
-    '- alt: descrição específica e objetiva da imagem, no máximo 10 palavras (até 100 caracteres), sem "imagem de" e sem aspas.',
+    '- alt: descrição específica e objetiva da imagem, em português do Brasil, com 70 a 125 caracteres (até 12 palavras), sem começar com "imagem de" nem "foto de" e sem aspas.',
     '- caption: uma frase curta de legenda que complemente a imagem, sem repetir o alt literalmente.',
   );
   return linhas.join('\n');
@@ -598,6 +637,187 @@ async function blobParaBase64(blob: Blob): Promise<string> {
     binario += String.fromCharCode(...Array.from(bytes.subarray(i, i + passo)));
   }
   return btoa(binario);
+}
+
+// ---------------------------------------------------------------------------
+// Criador de posts (personalidade + SEO) e aprendizado de estilo
+// ---------------------------------------------------------------------------
+
+interface EntradaFeed {
+  title?: { $t?: string };
+  content?: { $t?: string };
+  link?: Array<{ rel?: string; href?: string }>;
+}
+
+interface RespostaFeed {
+  feed?: { entry?: EntradaFeed[] };
+}
+
+async function buscarPostsDoBlog(blogId: string): Promise<{ posts: PostDoBlog[]; amostras: string[] }> {
+  const id = String(blogId || '').trim();
+  if (!/^[0-9]{5,25}$/.test(id)) {
+    throw new Error('Não identifiquei o número do blog nesta página. Abra o editor de um post e tente de novo.');
+  }
+  const url = 'https://www.blogger.com/feeds/' + id + '/posts/default?alt=json&max-results=25';
+  let resposta: Response;
+  try {
+    resposta = await fetch(url, { redirect: 'follow' });
+  } catch {
+    throw new Error('Não consegui acessar os textos do blog. Verifique a conexão e tente de novo.');
+  }
+  if (!resposta.ok) {
+    throw new Error(
+      'O blog não liberou a lista de posts (talvez seja privado). Você pode escrever a personalidade à mão.',
+    );
+  }
+  const dados = (await resposta.json().catch(() => null)) as RespostaFeed | null;
+  const entradas = (dados && dados.feed && dados.feed.entry) || [];
+  const posts: PostDoBlog[] = [];
+  const amostras: string[] = [];
+  for (const entrada of entradas) {
+    const titulo = (entrada.title && entrada.title.$t) || '';
+    const links = entrada.link || [];
+    const alternativo = links.find((l) => l.rel === 'alternate' && l.href);
+    if (titulo && alternativo && alternativo.href) posts.push({ titulo, url: alternativo.href });
+    const bruto = (entrada.content && entrada.content.$t) || '';
+    const limpo = bruto.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (titulo && limpo.length > 200 && amostras.length < 8) {
+      amostras.push('Título: ' + titulo + '\n' + limpo.slice(0, 2500));
+    }
+  }
+  return { posts, amostras };
+}
+
+async function aprenderEstilo(blogId: string): Promise<PerfilEstilo> {
+  const { posts, amostras } = await buscarPostsDoBlog(blogId);
+  if (!amostras.length) {
+    throw new Error('Não encontrei posts publicados com texto suficiente para aprender o estilo.');
+  }
+  const material = amostras.join('\n\n---\n\n').slice(0, 20000);
+  const prompt = [
+    'Você é um analista de estilo de escrita.',
+    'Leia os textos abaixo, escritos pelo autor de um blog, e produza um PERFIL DE ESTILO objetivo, em português do Brasil.',
+    'Descreva: tom e humor, público, vocabulário típico, expressões e bordões, tamanho dos parágrafos, uso de listas, ritmo e estrutura dos posts.',
+    'Responda apenas com o texto do perfil (até 1200 caracteres), pronto para ser usado como instrução de personalidade.',
+    '',
+    'TEXTOS:',
+    material,
+  ].join('\n');
+  const perfil = limitarTexto(await chamarIA({ prompt, temperatura: 0.3, maxTokens: 4096 }), 1500);
+  if (!perfil) throw new Error('A IA não conseguiu criar o perfil de estilo. Tente novamente.');
+  const pacote: PerfilEstilo = { perfil, posts: posts.slice(0, 25), atualizadoEm: agoraIso() };
+  await chrome.storage.local.set({ 'bai.perfilEstilo': pacote });
+  return pacote;
+}
+
+async function gerarPost(mensagem: {
+  persona: string;
+  assunto: string;
+  pontos: string;
+  blogId: string;
+}): Promise<CriacaoPost> {
+  const persona = String(mensagem.persona || '').trim().slice(0, 2000);
+  const assunto = limitarTexto(mensagem.assunto, 200);
+  const pontos = String(mensagem.pontos || '').trim().slice(0, 4000);
+  if (!assunto) throw new Error('Informe o assunto (ou um título provisório) do post.');
+  if (persona.length < 20) {
+    throw new Error('Escreva a personalidade ou use "Aprender estilo com os textos do blog".');
+  }
+
+  let listaPosts: PostDoBlog[] = [];
+  const local = (await chrome.storage.local.get('bai.perfilEstilo')) as Record<string, unknown>;
+  const salvo = local['bai.perfilEstilo'] as PerfilEstilo | undefined;
+  if (salvo && Array.isArray(salvo.posts) && salvo.posts.length) {
+    listaPosts = salvo.posts;
+  } else if (mensagem.blogId) {
+    try {
+      const busca = await buscarPostsDoBlog(mensagem.blogId);
+      listaPosts = busca.posts;
+    } catch {
+      listaPosts = [];
+    }
+  }
+
+  const bruto = await chamarIA({
+    prompt: montarPromptPost({ persona, assunto, pontos, posts: listaPosts.slice(0, 20) }),
+    esquema: ESQUEMA_POST,
+    temperatura: 0.3,
+    maxTokens: 32768,
+  });
+  return normalizarCriacao(lerJson(bruto));
+}
+
+function montarPromptPost(dados: {
+  persona: string;
+  assunto: string;
+  pontos: string;
+  posts: PostDoBlog[];
+}): string {
+  const linhas = [
+    'Você é o autor de um blog e vai escrever um post completo, em português do Brasil.',
+    '',
+    'PERSONALIDADE (siga exatamente este jeito de escrever):',
+    dados.persona,
+    '',
+    'ASSUNTO DO POST: ' + dados.assunto,
+  ];
+  if (dados.pontos) {
+    linhas.push('', 'PONTOS QUE PRECISAM APARECER (não ignore nenhum):', dados.pontos);
+  }
+  linhas.push(
+    '',
+    'REGRAS DE SEO QUE O TEXTO PRECISA CUMPRIR:',
+    '- titulo: 50 a 60 caracteres, com a palavra-chave principal no início, sem repetir o nome do blog.',
+    '- meta_descricao: 150 a 160 caracteres, com a palavra-chave de forma natural e um convite para clicar.',
+    '- slug: curto, com a palavra-chave, palavras separadas por hífen.',
+    '- Estrutura: use apenas <h2> e <h3> no corpo (o título do post já é o H1); nunca pule níveis; um <h2> a cada 200 a 500 palavras.',
+    '- corpo_html: entre 800 e 2500 palavras, parágrafos de 2 a 4 linhas, listas quando ajudar, negrito para destacar.',
+    '- Densidade da palavra-chave principal: entre 1% e 2% (nunca acima de 3%).',
+    '- Use APENAS estas tags no corpo: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em> e <a href="...">.',
+    '- Conteúdo único e específico sobre o assunto; nada de encher linguiça.',
+  );
+  if (dados.posts.length) {
+    linhas.push(
+      '- links_internos: sugira de 2 a 5 links para posts do próprio blog usando SOMENTE estas URLs: ' +
+        dados.posts.map((post) => post.url).join(' '),
+    );
+  } else {
+    linhas.push('- links_internos: deixe a lista vazia.');
+  }
+  linhas.push(
+    '- observacoes: até 4 recados curtos para o autor (ex.: onde inserir imagens, fatos a conferir).',
+    '',
+    'Responda SOMENTE com o JSON pedido, sem cercas de código (```).',
+  );
+  return linhas.join('\n');
+}
+
+function normalizarCriacao(bruto: unknown): CriacaoPost {
+  const dados = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>;
+  const corpo = String(dados.corpo_html || '').trim();
+  if (!corpo) throw new Error('A IA não devolveu o texto do post. Tente novamente.');
+  const linksBrutos = Array.isArray(dados.links_internos) ? dados.links_internos : [];
+  const links: LinkInterno[] = [];
+  for (const item of linksBrutos) {
+    const registro = (item || {}) as Record<string, unknown>;
+    const ancora = limitarTexto(registro.ancora, 80);
+    const url = String(registro.url || '').trim();
+    if (ancora && /^https?:/i.test(url)) links.push({ ancora, url });
+  }
+  return {
+    titulo: limitarTexto(dados.titulo, 90),
+    meta_descricao: limitarTexto(dados.meta_descricao, 220),
+    slug: limitarTexto(dados.slug, 90),
+    palavra_chave: limitarTexto(dados.palavra_chave, 80),
+    palavras_secundarias: vetorDeTextos(dados.palavras_secundarias, 10, 60),
+    corpo_html: corpo.slice(0, 120000),
+    links_internos: links.slice(0, 8),
+    observacoes: vetorDeTextos(dados.observacoes, 6, 240),
+  };
+}
+
+function agoraIso(): string {
+  return new Date().toISOString();
 }
 
 // ---------------------------------------------------------------------------

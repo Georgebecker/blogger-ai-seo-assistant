@@ -5,7 +5,9 @@
 
 import './content.css';
 import type {
+  CriacaoPost,
   MensagemParaFundo,
+  PerfilEstilo,
   RespostaFundo,
   ResultadoLink,
   ResultadoLinks,
@@ -22,12 +24,13 @@ declare global {
 
 const RAIZ_ID = 'bai-seo-root';
 const CHAVE_KEYWORD = 'bai.keyword';
+const CHAVE_PERSONA = 'bai.persona';
 const LIMITE_TEXTO = 15000;
 const MAX_IMAGENS = 15;
 const MAX_LINKS_UI = 20;
 const INTERVALO_VARREDURA = 2500;
 
-type AbaId = 'texto' | 'imagens' | 'checklist';
+type AbaId = 'texto' | 'criar' | 'imagens' | 'checklist';
 type StatusItem = 'ok' | 'aviso' | 'falha' | 'info' | 'erro';
 
 interface ItemImagem {
@@ -50,6 +53,7 @@ interface ItemChecklist {
 interface ResultadoAnaliseLinks {
   problemas: string[];
   resumo: string;
+  internos: number;
 }
 
 interface Estado {
@@ -99,6 +103,13 @@ interface Refs {
   botaoOtimizar: HTMLButtonElement;
   statusTexto: HTMLElement;
   resultadoTexto: HTMLElement;
+  persona: HTMLTextAreaElement;
+  assunto: HTMLInputElement;
+  pontos: HTMLTextAreaElement;
+  botaoAprender: HTMLButtonElement;
+  botaoGerarPost: HTMLButtonElement;
+  statusCriar: HTMLElement;
+  resultadoCriar: HTMLElement;
   botaoEscanear: HTMLButtonElement;
   botaoGerarTodas: HTMLButtonElement;
   botaoAplicarTodas: HTMLButtonElement;
@@ -1033,7 +1044,7 @@ function analisarLinks(editor: HTMLElement): ResultadoAnaliseLinks {
       problemas.push('Endereço inválido: ' + bruto);
       continue;
     }
-    if (url.hostname === location.hostname) internos += 1;
+    if (url.hostname === location.hostname || /\.blogspot\.com$/i.test(url.hostname)) internos += 1;
     else externos += 1;
     if (!texto) problemas.push('Link sem texto visível: ' + url.href);
     if (ancora.getAttribute('target') === '_blank' && !/noopener/.test(ancora.getAttribute('rel') || '')) {
@@ -1048,7 +1059,7 @@ function analisarLinks(editor: HTMLElement): ResultadoAnaliseLinks {
     externos +
     ' externo(s)' +
     (problemas.length ? '; ' + problemas.length + ' ponto(s) de atenção' : '');
-  return { problemas, resumo };
+  return { problemas, resumo, internos };
 }
 
 function coletarLinksExternos(editor: HTMLElement): string[] {
@@ -1097,8 +1108,8 @@ function montarChecklist(): ItemChecklist[] {
     itens.push(
       itemChecklist(
         'titulo-tamanho',
-        'Título com 30 a 60 caracteres',
-        tamanho >= 30 && tamanho <= 60 ? 'ok' : 'aviso',
+        'Título com 50 a 60 caracteres',
+        tamanho >= 50 && tamanho <= 60 ? 'ok' : 'aviso',
         'atual: ' + tamanho + ' caracteres',
       ),
     );
@@ -1136,8 +1147,8 @@ function montarChecklist(): ItemChecklist[] {
     itens.push(
       itemChecklist(
         'meta-tamanho',
-        'Meta-descrição com até 155 caracteres',
-        descricao.length <= 155 && descricao.length >= 60 ? 'ok' : 'aviso',
+        'Meta-descrição com 150 a 160 caracteres',
+        descricao.length >= 150 && descricao.length <= 160 ? 'ok' : 'aviso',
         'atual: ' + descricao.length + ' caracteres',
       ),
     );
@@ -1165,13 +1176,15 @@ function montarChecklist(): ItemChecklist[] {
   if (palavra) {
     const ocorrencias = contarOcorrencias(texto, palavra);
     const densidade = palavras ? (ocorrencias / palavras) * 100 : 0;
-    const densidadeOk = densidade >= 0.5 && densidade <= 2.5;
+    const densidadeOk = densidade >= 1 && densidade <= 2;
+    let detalheDensidade = ocorrencias + ' ocorrência(s) - ' + densidade.toFixed(2).replace('.', ',') + '%';
+    if (densidade > 3) detalheDensidade += ' (acima do limite de 3%)';
     itens.push(
       itemChecklist(
         'densidade',
-        'Densidade da palavra-chave entre 0,5% e 2,5%',
+        'Densidade da palavra-chave entre 1% e 2%',
         ocorrencias === 0 ? 'falha' : densidadeOk ? 'ok' : 'aviso',
-        ocorrencias + ' ocorrência(s) - ' + densidade.toFixed(2).replace('.', ',') + '%',
+        detalheDensidade,
       ),
     );
     const primeiroParagrafo = primeiroBlocoDeTexto(editor);
@@ -1203,22 +1216,31 @@ function montarChecklist(): ItemChecklist[] {
   }
 
   const coleta = coletarImagens(editor);
+  let detalheImagens: string;
+  if (coleta.todas.length === 0) detalheImagens = 'O post ainda não tem imagens (recomendado: 2 ou mais).';
+  else if (coleta.semAlt.length > 0) detalheImagens = coleta.semAlt.length + ' de ' + coleta.todas.length + ' sem descrição';
+  else if (coleta.todas.length < 2) detalheImagens = coleta.todas.length + ' imagem com descrição (recomendado: 2 ou mais)';
+  else detalheImagens = coleta.todas.length + ' imagem(ns), todas com descrição';
   itens.push(
     itemChecklist(
       'imagens-alt',
-      'Imagens com texto alternativo (alt)',
-      coleta.todas.length === 0 ? 'info' : coleta.semAlt.length === 0 ? 'ok' : 'aviso',
-      coleta.todas.length === 0
-        ? 'O post ainda não tem imagens.'
-        : coleta.semAlt.length === 0
-          ? coleta.todas.length + ' imagem(ns), todas com descrição'
-          : coleta.semAlt.length + ' de ' + coleta.todas.length + ' sem descrição',
+      'Imagens: 2 ou mais, todas com texto alternativo',
+      coleta.todas.length >= 2 && coleta.semAlt.length === 0 ? 'ok' : 'aviso',
+      detalheImagens,
     ),
   );
 
   const links = analisarLinks(editor);
   const detalheLinks = links.resumo + (links.problemas.length ? ' | ' + links.problemas.slice(0, 2).join(' | ') : '');
   itens.push(itemChecklist('links', 'Links válidos e seguros', links.problemas.length ? 'aviso' : 'ok', detalheLinks));
+  itens.push(
+    itemChecklist(
+      'links-internos',
+      'Links internos (2 a 5 por 1.000 palavras)',
+      links.internos >= Math.max(2, Math.ceil((palavras / 1000) * 2)) ? 'ok' : 'aviso',
+      links.internos + ' link(s) interno(s) em ' + palavras + ' palavras',
+    ),
+  );
 
   itens.push(
     itemChecklist(
@@ -1349,6 +1371,335 @@ function agendarChecklist(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Criar: personalidade, aprendizado de estilo e geração de post
+// ---------------------------------------------------------------------------
+
+function numeroDoBlog(): string {
+  const partes = location.pathname.split('/').filter(Boolean);
+  for (const parte of partes) {
+    if (/^[0-9]{6,25}$/.test(parte)) return parte;
+  }
+  return '';
+}
+
+async function aprenderEstilo(): Promise<void> {
+  const blogId = numeroDoBlog();
+  if (!blogId) {
+    definirStatus(
+      refs.statusCriar,
+      'Não identifiquei o número do blog nesta página. Abra o editor de um post e tente de novo.',
+      'aviso',
+    );
+    return;
+  }
+  ocupar(refs.botaoAprender, true, 'Lendo os textos do blog...');
+  definirStatus(refs.statusCriar, 'Buscando os posts publicados para aprender o estilo...', 'info');
+  try {
+    const perfil = await enviarParaFundo<PerfilEstilo>({ type: 'AI_APRENDER_ESTILO', blogId });
+    refs.persona.value = perfil.perfil;
+    gravarArmazenamentoLocal({ [CHAVE_PERSONA]: perfil.perfil });
+    definirStatus(
+      refs.statusCriar,
+      'Estilo aprendido de ' + perfil.posts.length + ' post(s) do blog e salvo na personalidade. Revise se quiser.',
+      'ok',
+    );
+  } catch (erro) {
+    definirStatus(refs.statusCriar, (erro as Error).message, 'erro');
+  } finally {
+    ocupar(refs.botaoAprender, false);
+  }
+}
+
+async function gerarPost(): Promise<void> {
+  const persona = refs.persona.value.trim();
+  const assunto = refs.assunto.value.trim();
+  const pontos = refs.pontos.value.trim();
+  if (!assunto) {
+    definirStatus(refs.statusCriar, 'Informe o assunto (ou um título provisório) do post.', 'aviso');
+    refs.assunto.focus();
+    return;
+  }
+  if (persona.length < 20) {
+    definirStatus(
+      refs.statusCriar,
+      'Escreva a personalidade ou clique em "Aprender estilo com os textos do blog".',
+      'aviso',
+    );
+    refs.persona.focus();
+    return;
+  }
+  estado.ocupado = true;
+  ocupar(refs.botaoGerarPost, true, 'Escrevendo o post...');
+  definirStatus(refs.statusCriar, 'A IA está escrevendo o post completo (pode levar um tempo)...', 'info');
+  try {
+    const criacao = await enviarParaFundo<CriacaoPost>({
+      type: 'AI_GERAR_POST',
+      persona,
+      assunto,
+      pontos,
+      blogId: numeroDoBlog(),
+    });
+    renderizarCriacao(criacao);
+    definirStatus(refs.statusCriar, 'Post gerado. Revise, aplique os campos e insira o texto no post.', 'ok');
+  } catch (erro) {
+    definirStatus(refs.statusCriar, (erro as Error).message, 'erro');
+  } finally {
+    estado.ocupado = false;
+    ocupar(refs.botaoGerarPost, false);
+  }
+}
+
+const TAGS_PERMITIDAS = new Set(['H2', 'H3', 'P', 'UL', 'OL', 'LI', 'STRONG', 'EM', 'A']);
+
+function sanitizarNo(no: Node, doc: Document): Node {
+  if (no.nodeType === Node.TEXT_NODE) return doc.createTextNode(no.textContent || '');
+  if (no.nodeType !== Node.ELEMENT_NODE) return doc.createTextNode('');
+  const el = no as HTMLElement;
+  if (!TAGS_PERMITIDAS.has(el.tagName)) {
+    const fragmento = doc.createDocumentFragment();
+    for (const filho of Array.from(el.childNodes)) fragmento.appendChild(sanitizarNo(filho, doc));
+    return fragmento;
+  }
+  const novo = doc.createElement(el.tagName.toLowerCase());
+  if (el.tagName === 'A') {
+    const href = el.getAttribute('href') || '';
+    if (/^https?:/i.test(href)) {
+      novo.setAttribute('href', href);
+      novo.setAttribute('target', '_blank');
+      novo.setAttribute('rel', 'noopener');
+    }
+  }
+  for (const filho of Array.from(el.childNodes)) novo.appendChild(sanitizarNo(filho, doc));
+  return novo;
+}
+
+function sanitizarHtml(bruto: string): string {
+  const doc = new DOMParser().parseFromString(bruto, 'text/html');
+  const destino = doc.createElement('div');
+  for (const no of Array.from(doc.body.childNodes)) destino.appendChild(sanitizarNo(no, doc));
+  return destino.innerHTML;
+}
+
+function textoPlanoDoHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function avaliarCriacao(criacao: CriacaoPost): ItemChecklist[] {
+  const itens: ItemChecklist[] = [];
+  const texto = textoPlanoDoHtml(criacao.corpo_html);
+  const palavras = texto ? texto.split(/\s+/).filter(Boolean).length : 0;
+  const palavra = criacao.palavra_chave.toLowerCase();
+
+  const tamanhoTitulo = criacao.titulo.length;
+  itens.push(
+    itemChecklist(
+      'c-titulo',
+      'Título com 50 a 60 caracteres',
+      tamanhoTitulo >= 50 && tamanhoTitulo <= 60 ? 'ok' : 'aviso',
+      'atual: ' + tamanhoTitulo + ' caracteres',
+    ),
+  );
+  itens.push(
+    itemChecklist(
+      'c-titulo-inicio',
+      'Palavra-chave no início do título',
+      palavra && criacao.titulo.toLowerCase().indexOf(palavra) === 0 ? 'ok' : 'aviso',
+      criacao.palavra_chave || '(sem palavra-chave)',
+    ),
+  );
+  const tamanhoMeta = criacao.meta_descricao.length;
+  itens.push(
+    itemChecklist(
+      'c-meta',
+      'Meta descrição com 150 a 160 caracteres',
+      tamanhoMeta >= 150 && tamanhoMeta <= 160 ? 'ok' : 'aviso',
+      'atual: ' + tamanhoMeta + ' caracteres',
+    ),
+  );
+  itens.push(
+    itemChecklist('c-palavras', 'Pelo menos 800 palavras', palavras >= 800 ? 'ok' : 'aviso', palavras + ' palavras'),
+  );
+  const ocorrencias = contarOcorrencias(texto, criacao.palavra_chave);
+  const densidade = palavras ? (ocorrencias / palavras) * 100 : 0;
+  let detalheDensidade = ocorrencias + ' ocorrência(s) - ' + densidade.toFixed(2).replace('.', ',') + '%';
+  if (densidade > 3) detalheDensidade += ' (acima do limite de 3%)';
+  itens.push(
+    itemChecklist(
+      'c-densidade',
+      'Densidade da palavra-chave entre 1% e 2%',
+      densidade >= 1 && densidade <= 2 ? 'ok' : 'aviso',
+      detalheDensidade,
+    ),
+  );
+  const doc = new DOMParser().parseFromString(criacao.corpo_html, 'text/html');
+  const h2 = doc.body.querySelectorAll('h2').length;
+  const h3 = doc.body.querySelectorAll('h3').length;
+  const h1 = doc.body.querySelectorAll('h1').length;
+  let pulouNivel = false;
+  let anterior = 2;
+  for (const titulo of Array.from(doc.body.querySelectorAll('h1, h2, h3, h4'))) {
+    const nivel = Number(titulo.tagName.slice(1));
+    if (nivel > anterior + 1) pulouNivel = true;
+    anterior = nivel;
+  }
+  let detalheEstrutura = h2 + ' H2, ' + h3 + ' H3';
+  if (h1) detalheEstrutura += ', ' + h1 + ' H1 (não use H1 no corpo)';
+  if (pulouNivel) detalheEstrutura += ' - pulou um nível';
+  itens.push(
+    itemChecklist(
+      'c-estrutura',
+      'Subtítulos H2/H3 sem pular níveis',
+      h1 === 0 && h2 >= 2 && !pulouNivel ? 'ok' : 'aviso',
+      detalheEstrutura,
+    ),
+  );
+  itens.push(
+    itemChecklist(
+      'c-links',
+      'Links internos sugeridos (2 a 5)',
+      criacao.links_internos.length >= 2 ? 'ok' : 'aviso',
+      criacao.links_internos.length + ' link(s)',
+    ),
+  );
+  itens.push(
+    itemChecklist(
+      'c-slug',
+      'Endereço (slug) com a palavra-chave',
+      palavra && criacao.slug && criacao.slug.toLowerCase().includes(palavra.split(' ')[0]) ? 'ok' : 'aviso',
+      criacao.slug || '(sem slug)',
+    ),
+  );
+  return itens;
+}
+
+function renderizarCriacao(criacao: CriacaoPost): void {
+  const caixa = refs.resultadoCriar;
+  caixa.textContent = '';
+
+  const itens = avaliarCriacao(criacao);
+  const avaliaveis = itens.filter((item) => item.status !== 'info');
+  const pontos = avaliaveis.reduce(
+    (soma, item) => soma + (item.status === 'ok' ? 1 : item.status === 'aviso' ? 0.5 : 0),
+    0,
+  );
+  const percentual = avaliaveis.length ? Math.round((pontos / avaliaveis.length) * 100) : 0;
+  caixa.appendChild(
+    criar('div', {
+      className: 'bai-resumo ' + (percentual >= 80 ? 'bai-ok' : percentual >= 50 ? 'bai-aviso' : 'bai-falha'),
+      texto: 'Conformidade SEO do texto gerado: ' + percentual + '%',
+    }),
+  );
+
+  const detalhes = criar('section', { className: 'bai-card' });
+  for (const item of itens) {
+    const linha = criar('div', { className: 'bai-check-item bai-' + item.status });
+    const ponto = criar('span', { className: 'bai-ponto' });
+    const corpo = criar('div');
+    corpo.appendChild(criar('div', { className: 'bai-check-rotulo', texto: item.rotulo }));
+    if (item.detalhe) corpo.appendChild(criar('div', { className: 'bai-check-detalhe', texto: item.detalhe }));
+    linha.append(ponto, corpo);
+    detalhes.appendChild(linha);
+  }
+  caixa.appendChild(detalhes);
+
+  if (criacao.titulo) {
+    caixa.appendChild(
+      cardTexto('Título do post', criacao.titulo.length + ' caracteres', criacao.titulo, [
+        { rotulo: 'Aplicar no título', acao: () => aplicarTitulo(criacao.titulo), principal: true },
+        { rotulo: 'Copiar', acao: () => void copiar(criacao.titulo) },
+      ]),
+    );
+  }
+  if (criacao.meta_descricao) {
+    caixa.appendChild(
+      cardTexto('Meta descrição', criacao.meta_descricao.length + ' caracteres', criacao.meta_descricao, [
+        { rotulo: 'Aplicar', acao: () => void aplicarMetaDescricao(criacao.meta_descricao), principal: true },
+        { rotulo: 'Copiar', acao: () => void copiar(criacao.meta_descricao) },
+      ]),
+    );
+  }
+  const extras = [
+    criacao.slug ? 'slug: ' + criacao.slug : '',
+    criacao.palavra_chave ? 'palavra-chave: ' + criacao.palavra_chave : '',
+    criacao.palavras_secundarias.length ? 'secundárias: ' + criacao.palavras_secundarias.join(', ') : '',
+  ].filter(Boolean);
+  if (extras.length) caixa.appendChild(cardLista('Palavras e endereço', extras));
+  if (criacao.links_internos.length) {
+    caixa.appendChild(
+      cardLista('Links internos sugeridos', criacao.links_internos.map((link) => link.ancora + ' -> ' + link.url)),
+    );
+  }
+  if (criacao.observacoes.length) caixa.appendChild(cardLista('Recados da IA', criacao.observacoes));
+
+  const palavrasCorpo = textoPlanoDoHtml(criacao.corpo_html).split(/\s+/).filter(Boolean).length;
+  const cartao = criar('section', { className: 'bai-card' });
+  cartao.appendChild(
+    criar('div', { className: 'bai-card-cabeco' }, [
+      criar('strong', { texto: 'Corpo do post' }),
+      criar('span', { texto: palavrasCorpo + ' palavras' }),
+    ]),
+  );
+  const preview = criar('div', { className: 'bai-preview' });
+  // O HTML abaixo já passou pelo filtro de tags permitidas (sanitizarHtml).
+  preview.innerHTML = sanitizarHtml(criacao.corpo_html);
+  cartao.appendChild(preview);
+  const acoes = criar('div', { className: 'bai-acoes' });
+  acoes.appendChild(
+    criarBotaoComClasse({ rotulo: 'Inserir no post', acao: () => inserirCriacaoNoPost(criacao), principal: true }),
+  );
+  acoes.appendChild(
+    criarBotaoComClasse({ rotulo: 'Copiar texto', acao: () => void copiar(textoPlanoDoHtml(criacao.corpo_html)) }),
+  );
+  cartao.appendChild(acoes);
+  caixa.appendChild(cartao);
+}
+
+function inserirCriacaoNoPost(criacao: CriacaoPost): void {
+  const editor = localizarEditor();
+  if (!editor) {
+    definirStatus(refs.statusCriar, 'Não encontrei o editor. Use "Apontar manualmente" no rodapé do painel.', 'erro');
+    return;
+  }
+  const confirmado = window.confirm('Inserir o texto gerado no fim do post? Dá para desfazer com Ctrl+Z.');
+  if (!confirmado) return;
+  const html = sanitizarHtml(criacao.corpo_html);
+  const doc = editor.ownerDocument;
+  editor.focus();
+  const selecao = doc.getSelection();
+  const intervalo = doc.createRange();
+  intervalo.selectNodeContents(editor);
+  intervalo.collapse(false);
+  if (selecao) {
+    selecao.removeAllRanges();
+    selecao.addRange(intervalo);
+  }
+  let aplicado = false;
+  try {
+    aplicado = doc.execCommand('insertHTML', false, html);
+  } catch {
+    aplicado = false;
+  }
+  if (!aplicado) {
+    try {
+      aplicado = doc.execCommand('insertText', false, textoPlanoDoHtml(criacao.corpo_html));
+    } catch {
+      aplicado = false;
+    }
+  }
+  if (!aplicado) {
+    definirStatus(
+      refs.statusCriar,
+      'O Blogger não aceitou a inserção automática. Use "Copiar texto" e cole no post.',
+      'aviso',
+    );
+    return;
+  }
+  definirStatus(refs.statusCriar, 'Texto inserido no fim do post. Revise e salve o rascunho.', 'ok');
+  agendarChecklist();
+}
+
+// ---------------------------------------------------------------------------
 // UI (botão flutuante + painel com abas)
 // ---------------------------------------------------------------------------
 
@@ -1385,9 +1736,11 @@ function montarUI(): void {
   const abas = montarAbas();
   const corpo = criar('div', { className: 'bai-corpo' });
   const secaoTexto = montarSecaoTexto();
+  const secaoCriar = montarSecaoCriar();
   const secaoImagens = montarSecaoImagens();
   const secaoChecklist = montarSecaoChecklist();
-  corpo.append(secaoTexto, secaoImagens, secaoChecklist);
+  corpo.append(secaoTexto, secaoCriar, secaoImagens, secaoChecklist);
+  secaoCriar.classList.add('bai-oculto');
   secaoImagens.classList.add('bai-oculto');
   secaoChecklist.classList.add('bai-oculto');
 
@@ -1412,13 +1765,14 @@ function montarUI(): void {
   refs.botao = botao;
   refs.pill = pill;
   refs.painel = painel;
-  refs.secoes = { texto: secaoTexto, imagens: secaoImagens, checklist: secaoChecklist };
+  refs.secoes = { texto: secaoTexto, criar: secaoCriar, imagens: secaoImagens, checklist: secaoChecklist };
 }
 
 function montarAbas(): HTMLElement {
   const abas = criar('nav', { className: 'bai-abas', role: 'tablist' });
   const definicoes: Array<{ id: AbaId; rotulo: string }> = [
     { id: 'texto', rotulo: 'Texto' },
+    { id: 'criar', rotulo: 'Criar' },
     { id: 'imagens', rotulo: 'Imagens' },
     { id: 'checklist', rotulo: 'Checklist' },
   ];
@@ -1474,6 +1828,82 @@ function montarSecaoTexto(): HTMLElement {
   refs.botaoOtimizar = otimizar;
   refs.statusTexto = status;
   refs.resultadoTexto = resultado;
+  return secao;
+}
+
+function montarSecaoCriar(): HTMLElement {
+  const secao = criar('section', { className: 'bai-secao bai-secao-criar' });
+
+  const campoPersona = criar('div', { className: 'bai-campo' });
+  campoPersona.appendChild(
+    criar('label', { className: 'bai-rotulo', texto: 'Personalidade do autor', for: 'bai-persona' }),
+  );
+  const persona = criar('textarea', {
+    id: 'bai-persona',
+    className: 'bai-entrada bai-area',
+    placeholder: 'ex.: entusiasta de tecnologia, escritor direto ao ponto, gosta de exemplos do dia a dia...',
+    rows: '3',
+  }) as HTMLTextAreaElement;
+  persona.addEventListener('input', () => {
+    gravarArmazenamentoLocal({ [CHAVE_PERSONA]: persona.value });
+  });
+  campoPersona.appendChild(persona);
+
+  const linhaPersona = criar('div', { className: 'bai-linha-botoes' });
+  const aprender = criar('button', {
+    className: 'bai-botao',
+    texto: 'Aprender estilo com os textos do blog',
+    type: 'button',
+    onclick: () => void aprenderEstilo(),
+  }) as HTMLButtonElement;
+  linhaPersona.appendChild(aprender);
+  campoPersona.appendChild(linhaPersona);
+
+  const campoAssunto = criar('div', { className: 'bai-campo' });
+  campoAssunto.appendChild(
+    criar('label', { className: 'bai-rotulo', texto: 'Assunto ou título provisório', for: 'bai-assunto' }),
+  );
+  const assunto = criar('input', {
+    type: 'text',
+    id: 'bai-assunto',
+    className: 'bai-entrada',
+    placeholder: 'ex.: como escolher um notebook em 2026',
+    autocomplete: 'off',
+  }) as HTMLInputElement;
+  campoAssunto.appendChild(assunto);
+
+  const campoPontos = criar('div', { className: 'bai-campo' });
+  campoPontos.appendChild(
+    criar('label', { className: 'bai-rotulo', texto: 'Pontos que precisam aparecer (um por linha)', for: 'bai-pontos' }),
+  );
+  const pontos = criar('textarea', {
+    id: 'bai-pontos',
+    className: 'bai-entrada bai-area',
+    rows: '3',
+    placeholder: 'ex.: falar de orçamento\ncomparar 3 modelos\ncitar garantia de 1 ano',
+  }) as HTMLTextAreaElement;
+  campoPontos.appendChild(pontos);
+
+  const linhaGerar = criar('div', { className: 'bai-linha-botoes' });
+  const gerar = criar('button', {
+    className: 'bai-botao bai-principal',
+    texto: 'Gerar post completo',
+    type: 'button',
+    onclick: () => void gerarPost(),
+  }) as HTMLButtonElement;
+  linhaGerar.appendChild(gerar);
+
+  const status = criar('div', { className: 'bai-status bai-info' });
+  const resultado = criar('div');
+
+  secao.append(campoPersona, campoAssunto, campoPontos, linhaGerar, status, resultado);
+  refs.persona = persona;
+  refs.assunto = assunto;
+  refs.pontos = pontos;
+  refs.botaoAprender = aprender;
+  refs.botaoGerarPost = gerar;
+  refs.statusCriar = status;
+  refs.resultadoCriar = resultado;
   return secao;
 }
 
@@ -1644,7 +2074,7 @@ async function atualizarStatusChave(): Promise<void> {
 // Preferências e vigias
 // ---------------------------------------------------------------------------
 
-function lerArmazenamentoLocal(chave: string): Promise<Record<string, unknown>> {
+function lerArmazenamentoLocal(chave: string | string[]): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     try {
       chrome.storage.local.get(chave, (itens) => resolve((itens || {}) as Record<string, unknown>));
@@ -1663,11 +2093,15 @@ function gravarArmazenamentoLocal(dados: Record<string, unknown>): void {
 }
 
 async function carregarPreferencias(): Promise<void> {
-  const dados = await lerArmazenamentoLocal(CHAVE_KEYWORD);
+  const dados = await lerArmazenamentoLocal([CHAVE_KEYWORD, CHAVE_PERSONA]);
   const salva = dados[CHAVE_KEYWORD];
   if (typeof salva === 'string' && salva) {
     estado.keyword = salva;
     refs.keyword.value = salva;
+  }
+  const persona = dados[CHAVE_PERSONA];
+  if (typeof persona === 'string' && persona && refs.persona) {
+    refs.persona.value = persona;
   }
 }
 

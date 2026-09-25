@@ -96,6 +96,7 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 
 ## Linha do tempo
 
+- **25/09/2026** — Aba "Criar" (gerador de posts por personalidade, com aprendizado de estilo pelos posts do blog e checklist de SEO embutido) + auditoria alinhada ao padrão do usuário (título 50–60, meta 150–160, densidade 1–2%, 2+ imagens, links internos; ALT 70–125).
 - **25/09/2026** — Suporte a dois provedores de IA: Google Gemini ou DeepSeek (escolha no popup; chaves criptografadas separadas; chamadas no service worker).
 - **25/09/2026** — Modelo padrão do Google corrigido (`gemini-2.0-flash` aposentado pela API → `gemini-3.8-flash`), com migração automática de modelos antigos salvos.
 - **25/09/2026** — Explicação em linguagem simples criada em `docs/ENTENDA_O_PROJETO.md`.

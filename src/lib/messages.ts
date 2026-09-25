@@ -41,6 +41,33 @@ export interface ResultadoLinks {
   resultados: ResultadoLink[];
 }
 
+export interface PostDoBlog {
+  titulo: string;
+  url: string;
+}
+
+export interface PerfilEstilo {
+  perfil: string;
+  posts: PostDoBlog[];
+  atualizadoEm: string;
+}
+
+export interface LinkInterno {
+  ancora: string;
+  url: string;
+}
+
+export interface CriacaoPost {
+  titulo: string;
+  meta_descricao: string;
+  slug: string;
+  palavra_chave: string;
+  palavras_secundarias: string[];
+  corpo_html: string;
+  links_internos: LinkInterno[];
+  observacoes: string[];
+}
+
 export type MensagemParaFundo =
   | { type: 'GET_STATUS' }
   | { type: 'SAVE_KEY'; provedor: Provedor; apiKey: string; masterPassword: string }
@@ -50,6 +77,8 @@ export type MensagemParaFundo =
   | { type: 'SET_SETTINGS'; provedor?: Provedor; modelo?: string }
   | { type: 'AI_OPTIMIZE_TEXT'; text: string; title: string; keyword: string }
   | { type: 'AI_IMAGE_ALT'; src: string; contexto: ContextoImagem }
+  | { type: 'AI_APRENDER_ESTILO'; blogId: string }
+  | { type: 'AI_GERAR_POST'; persona: string; assunto: string; pontos: string; blogId: string }
   | { type: 'CHECK_LINKS'; urls: string[] };
 
 export type RespostaFundo<T = unknown> = { ok: true; data: T } | { ok: false; error: string };

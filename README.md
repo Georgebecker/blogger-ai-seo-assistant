@@ -78,6 +78,10 @@ estiver aberto, a chave desbloqueada fica apenas na memória da sessão (`chrome
      aplique o título, a meta-descrição ou o texto revisado (com confirmação; dá para desfazer
      com Ctrl+Z). A meta-descrição é aplicada em "Configurações do post > Descrição da pesquisa"
      (a extensão abre a seção por você quando precisa).
+   - **Criar** — separado da auditoria: escreva (ou aprenda com os textos do blog) uma
+     personalidade, informe o assunto e os pontos que precisam aparecer, e receba um post
+     completo com título, meta-descrição, slug, palavras-chave, links internos e texto já
+     dentro das regras de SEO; revise a "Conformidade SEO" e insira no post.
    - **Imagens** — escaneia as imagens sem `alt`, gera sugestões (alt + legenda) e aplica no post.
    - **Checklist** — auditoria em tempo real (título, meta-descrição, densidade da palavra-chave,
      subtítulos, alt, links) e verificação de links externos.

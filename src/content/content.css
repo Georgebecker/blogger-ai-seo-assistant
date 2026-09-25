@@ -214,3 +214,18 @@
 }
 
 .bai-copia { position: fixed; top: -1000px; left: -1000px; opacity: 0; }
+
+#bai-seo-root .bai-area { min-height: 64px; resize: vertical; }
+
+.bai-preview {
+  border: 1px solid #f3f4f6;
+  border-radius: 8px;
+  padding: 8px 10px;
+  max-height: 260px;
+  overflow: auto;
+  background: #fff;
+}
+.bai-preview h2 { font-size: 15px; margin: 10px 0 4px; font-weight: 700; }
+.bai-preview h3 { font-size: 13.5px; margin: 8px 0 4px; font-weight: 700; }
+.bai-preview p { margin: 0 0 6px; }
+.bai-preview ul, .bai-preview ol { margin: 0 0 6px; padding-left: 20px; }
