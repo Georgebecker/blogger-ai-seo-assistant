@@ -10,6 +10,8 @@ A chave da API Gemini é sua (BYOK): fica guardada **criptografada** (AES-GCM + 
 navegador e só é usada no service worker, no momento da chamada — nunca é exposta na página.
 Por padrão tudo acontece em uma única janela, sem servidor próprio no meio.
 
+Explicação em linguagem simples (para qualquer pessoa): [`docs/ENTENDA_O_PROJETO.md`](docs/ENTENDA_O_PROJETO.md).
+
 ---
 
 ## Stack
@@ -104,7 +106,9 @@ blogger-ai-seo-assistant/
 ├── tsconfig.json
 ├── vite.config.ts
 ├── docs/
-│   └── DEVLOG.md               # Decisões de arquitetura e problemas antecipados
+│   ├── DEVLOG.md               # Decisões de arquitetura e problemas antecipados
+│   ├── ENTENDA_O_PROJETO.md    # Explicação em linguagem simples (para qualquer pessoa)
+│   └── PROMPTS_AGENTE.md       # Prompts por fase para conduzir agentes de IA
 ├── public/
 │   └── icons/                  # Ícones (gerados por tools/gerar_icones.py)
 ├── src/
