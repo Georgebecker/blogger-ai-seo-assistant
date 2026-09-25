@@ -105,6 +105,7 @@ interface Refs {
   statusImagens: HTMLElement;
   listaImagens: HTMLElement;
   resumoCheck: HTMLElement;
+  checkAtualizado: HTMLElement;
   listaCheck: HTMLElement;
 }
 
@@ -1236,7 +1237,23 @@ function formatarPontos(pontos: number): string {
 }
 
 function renderizarChecklist(): void {
-  const itens = montarChecklist();
+  let itens: ItemChecklist[];
+  try {
+    itens = montarChecklist();
+  } catch {
+    itens = [
+      itemChecklist(
+        'auditoria-erro',
+        'Auditoria',
+        'erro',
+        'Não consegui ler a página agora. Atualize a página (F5) e tente de novo.',
+      ),
+    ];
+  }
+  if (refs.checkAtualizado) {
+    refs.checkAtualizado.textContent = 'Atualizado às ' +
+      new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
   const avaliaveis = itens.filter((item) => item.status !== 'info');
   const pontos = avaliaveis.reduce(
     (soma, item) => soma + (item.status === 'ok' ? 1 : item.status === 'aviso' ? 0.5 : 0),
@@ -1509,14 +1526,24 @@ function montarSecaoChecklist(): HTMLElement {
     className: 'bai-botao',
     texto: 'Reauditar',
     type: 'button',
-    onclick: () => renderizarChecklist(),
+    onclick: () => {
+      if (!estado.editorManual) {
+        estado.editor = null;
+        estado.janela = null;
+        estado.campoDesc = null;
+        buscaFalhouEm = 0;
+      }
+      renderizarChecklist();
+    },
   }) as HTMLButtonElement;
   linha.appendChild(reauditar);
 
+  const atualizado = criar('div', { className: 'bai-dica', texto: 'Atualizado às --:--:--' });
   const lista = criar('div');
 
-  secao.append(resumo, linha, lista);
+  secao.append(resumo, linha, atualizado, lista);
   refs.resumoCheck = resumo;
+  refs.checkAtualizado = atualizado;
   refs.listaCheck = lista;
   return secao;
 }
