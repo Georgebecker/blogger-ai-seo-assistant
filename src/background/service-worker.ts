@@ -14,7 +14,9 @@ import type {
   MensagemParaFundo,
   PerfilEstilo,
   PostDoBlog,
+  PromptImagem,
   Provedor,
+  ResultadoImagem,
   ResultadoLink,
   ResultadoLinks,
   StatusChave,
@@ -31,6 +33,14 @@ const MODELO_PADRAO_GOOGLE = 'gemini-3.8-flash';
 const MODELO_PADRAO_DEEPSEEK = 'deepseek-flash';
 const LIMITE_TEXTO = 15000;
 const MAX_LINKS = 20;
+// API nova de imagens ("Interactions"). Os modelos abaixo são tentados em ordem.
+const ENDPOINT_INTERACOES = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+const MODELOS_IMAGEM = [
+  'gemini-3.1-flash-image',
+  'gemini-3.1-flash-lite-image',
+  'gemini-3-pro-image',
+  'gemini-2.5-flash-image',
+];
 
 const NOMES_PROVEDOR: Record<Provedor, string> = { google: 'Google', deepseek: 'DeepSeek' };
 
@@ -141,6 +151,10 @@ async function tratarMensagem(mensagem: MensagemParaFundo): Promise<unknown> {
       return aprenderEstilo(mensagem.blogId);
     case 'AI_GERAR_POST':
       return gerarPost(mensagem);
+    case 'AI_PROMPT_IMAGEM':
+      return criarPromptImagem(mensagem);
+    case 'AI_GERAR_IMAGEM':
+      return gerarImagem(mensagem);
     case 'CHECK_LINKS':
       return verificarLinks(mensagem.urls);
     default:
@@ -209,15 +223,40 @@ async function definirProvedorAtivo(provedor: Provedor): Promise<void> {
   });
 }
 
-async function obterSessao(): Promise<SessaoIA | null> {
+interface SessoesIA {
+  ativo: Provedor;
+  chaves: Partial<Record<Provedor, string>>;
+}
+
+// A sessão guarda a chave desbloqueada de cada provedor (some ao fechar o navegador).
+async function lerSessoes(): Promise<SessoesIA> {
   const dados = (await chrome.storage.session.get(SESSAO_CHAVE)) as Record<string, unknown>;
-  const bruto = dados[SESSAO_CHAVE] as { provedor?: unknown; apiKey?: unknown } | undefined;
-  if (!bruto || typeof bruto.apiKey !== 'string' || !bruto.apiKey) return null;
-  return { provedor: normalizarProvedor(bruto.provedor), apiKey: bruto.apiKey };
+  const bruto = (dados[SESSAO_CHAVE] || null) as Record<string, unknown> | null;
+  const sessoes: SessoesIA = { ativo: 'google', chaves: {} };
+  if (!bruto) return sessoes;
+  if (typeof bruto.apiKey === 'string' && bruto.apiKey) {
+    // Formato antigo: uma chave só.
+    const provedor = normalizarProvedor(bruto.provedor);
+    sessoes.ativo = provedor;
+    sessoes.chaves[provedor] = bruto.apiKey;
+    return sessoes;
+  }
+  sessoes.ativo = normalizarProvedor(bruto.ativo);
+  const chaves = (bruto.chaves || {}) as Record<string, unknown>;
+  if (typeof chaves.google === 'string' && chaves.google) sessoes.chaves.google = chaves.google;
+  if (typeof chaves.deepseek === 'string' && chaves.deepseek) sessoes.chaves.deepseek = chaves.deepseek;
+  return sessoes;
+}
+
+async function chaveDaSessao(provedor: Provedor): Promise<string | null> {
+  const sessoes = await lerSessoes();
+  return sessoes.chaves[provedor] || null;
 }
 
 async function gravarSessao(provedor: Provedor, apiKey: string): Promise<void> {
-  await chrome.storage.session.set({ [SESSAO_CHAVE]: { provedor, apiKey } });
+  const sessoes = await lerSessoes();
+  const chaves = { ...sessoes.chaves, [provedor]: apiKey };
+  await chrome.storage.session.set({ [SESSAO_CHAVE]: { ativo: provedor, chaves } });
 }
 
 let migracaoFeita = false;
@@ -243,12 +282,12 @@ async function statusAtual(): Promise<StatusChave> {
     armazemChave('google'),
     armazemChave('deepseek'),
   ])) as Record<string, unknown>;
-  const sessao = await obterSessao();
+  const sessoes = await lerSessoes();
   return {
     provedor: ajustes.provedor,
     temGoogle: Boolean(local[armazemChave('google')]),
     temDeepSeek: Boolean(local[armazemChave('deepseek')]),
-    desbloqueada: Boolean(sessao && sessao.provedor === ajustes.provedor),
+    desbloqueada: sessoes.ativo === ajustes.provedor && Boolean(sessoes.chaves[ajustes.provedor]),
     modelo: ajustes.modelos[ajustes.provedor],
   };
 }
@@ -295,24 +334,28 @@ async function bloquear(): Promise<void> {
 
 async function obterChaveAtiva(): Promise<SessaoIA> {
   const ajustes = await obterAjustes();
-  const sessao = await obterSessao();
-  if (!sessao || sessao.provedor !== ajustes.provedor) {
+  const sessoes = await lerSessoes();
+  const chave = sessoes.chaves[ajustes.provedor];
+  if (sessoes.ativo !== ajustes.provedor || !chave) {
     throw new Error(
       'A chave do ' + NOMES_PROVEDOR[ajustes.provedor] +
         ' está bloqueada. Abra o popup da extensão e desbloqueie com a senha mestra (ou salve a chave).',
     );
   }
-  return sessao;
+  return { provedor: ajustes.provedor, apiKey: chave };
 }
 
 async function testarChave(): Promise<{ resposta: string; provedor: string; modelo: string }> {
   const ativa = await obterChaveAtiva();
   const ajustes = await obterAjustes();
-  const resposta = await chamarIA({
-    prompt: 'Responda apenas com a palavra: ok',
-    temperatura: 0,
-    maxTokens: 1024,
-  });
+  const resposta = await chamarIA(
+    {
+      prompt: 'Responda apenas com a palavra: ok',
+      temperatura: 0,
+      maxTokens: 1024,
+    },
+    { semFallback: true, semRetentativas: true },
+  );
   return {
     resposta: limitarTexto(resposta, 40),
     provedor: NOMES_PROVEDOR[ativa.provedor],
@@ -344,14 +387,67 @@ interface RespostaDeepSeek {
   error?: { message?: string };
 }
 
-async function chamarIA(opcoes: OpcoesIA): Promise<string> {
-  const ativa = await obterChaveAtiva();
+interface ControleIA {
+  semFallback?: boolean;
+  semRetentativas?: boolean;
+}
+
+// Chama a IA com duas proteções: repeti erros passageiros (429/503, alta procura)
+// e, se o outro serviço estiver desbloqueado, tenta nele antes de desistir.
+async function chamarIA(opcoes: OpcoesIA, controle: ControleIA = {}): Promise<string> {
   const ajustes = await obterAjustes();
-  const modelo = ajustes.modelos[ativa.provedor];
-  if (ativa.provedor === 'deepseek') {
-    return chamarDeepSeek(ativa.apiKey, modelo, opcoes);
+  const principal = ajustes.provedor;
+  const sessoes = await lerSessoes();
+  if (sessoes.ativo !== principal || !sessoes.chaves[principal]) {
+    throw new Error(
+      'A chave do ' + NOMES_PROVEDOR[principal] +
+        ' está bloqueada. Abra o popup da extensão e desbloqueie com a senha mestra (ou salve a chave).',
+    );
   }
-  return chamarGoogle(ativa.apiKey, modelo, opcoes);
+  const ordem: Provedor[] = controle.semFallback
+    ? [principal]
+    : [principal, principal === 'google' ? 'deepseek' : 'google'];
+  let ultimoErro: unknown = null;
+  for (const provedor of ordem) {
+    const chave = sessoes.chaves[provedor];
+    if (!chave) continue;
+    try {
+      return await chamarProvedor(provedor, chave, ajustes.modelos[provedor], opcoes, !controle.semRetentativas);
+    } catch (erro) {
+      ultimoErro = erro;
+      const transitorio = erro instanceof ErroApi && erro.transitorio;
+      if (!transitorio) throw erro;
+      // erro passageiro: tenta o próximo da fila (se houver)
+    }
+  }
+  throw ultimoErro instanceof Error
+    ? ultimoErro
+    : new Error('Não consegui falar com a IA agora. Tente novamente em instantes.');
+}
+
+async function chamarProvedor(
+  provedor: Provedor,
+  apiKey: string,
+  modelo: string,
+  opcoes: OpcoesIA,
+  comRetentativas: boolean,
+): Promise<string> {
+  const esperas = comRetentativas ? [2500, 7000] : [];
+  for (let tentativa = 0; ; tentativa += 1) {
+    try {
+      return provedor === 'deepseek'
+        ? await chamarDeepSeek(apiKey, modelo, opcoes)
+        : await chamarGoogle(apiKey, modelo, opcoes);
+    } catch (erro) {
+      const transitorio = erro instanceof ErroApi && erro.transitorio;
+      if (!transitorio || tentativa >= esperas.length) throw erro;
+      await dormir(esperas[tentativa]);
+    }
+  }
+}
+
+function dormir(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function chamarGoogle(apiKey: string, modelo: string, opcoes: OpcoesIA): Promise<string> {
@@ -389,17 +485,17 @@ async function chamarGoogle(apiKey: string, modelo: string, opcoes: OpcoesIA): P
       signal: controlador.signal,
     });
   } catch (erro) {
-    if (erro && erro.name === 'AbortError') {
-      throw new Error('A IA demorou demais para responder. Tente novamente.');
+    if (erro && (erro as { name?: string }).name === 'AbortError') {
+      throw new ErroApi('A IA demorou demais para responder. Tente novamente.', true);
     }
-    throw new Error('Não consegui falar com a API do Google. Verifique a conexão e tente de novo.');
+    throw new ErroApi('Não consegui falar com a API do Google. Verifique a conexão e tente de novo.', true);
   } finally {
     clearTimeout(relogio);
   }
 
   const dados = (await resposta.json().catch(() => null)) as RespostaGemini | null;
   if (!resposta.ok) {
-    throw new Error(descreverErroApi('Google', resposta.status, dados?.error?.message ?? undefined));
+    throw erroDaApi('Google', resposta.status, dados?.error?.message ?? undefined);
   }
 
   const texto = extrairTexto(dados);
@@ -438,17 +534,17 @@ async function chamarDeepSeek(apiKey: string, modelo: string, opcoes: OpcoesIA):
       signal: controlador.signal,
     });
   } catch (erro) {
-    if (erro && erro.name === 'AbortError') {
-      throw new Error('A IA demorou demais para responder. Tente novamente.');
+    if (erro && (erro as { name?: string }).name === 'AbortError') {
+      throw new ErroApi('A IA demorou demais para responder. Tente novamente.', true);
     }
-    throw new Error('Não consegui falar com a API do DeepSeek. Verifique a conexão e tente de novo.');
+    throw new ErroApi('Não consegui falar com a API do DeepSeek. Verifique a conexão e tente de novo.', true);
   } finally {
     clearTimeout(relogio);
   }
 
   const dados = (await resposta.json().catch(() => null)) as RespostaDeepSeek | null;
   if (!resposta.ok) {
-    throw new Error(descreverErroApi('DeepSeek', resposta.status, dados?.error?.message ?? undefined));
+    throw erroDaApi('DeepSeek', resposta.status, dados?.error?.message ?? undefined);
   }
 
   const candidato = dados && dados.choices && dados.choices[0];
@@ -458,16 +554,42 @@ async function chamarDeepSeek(apiKey: string, modelo: string, opcoes: OpcoesIA):
   return limpo;
 }
 
-function descreverErroApi(provedorNome: string, status: number, detalheApi?: string): string {
-  const detalhe = detalheApi ? ` (${detalheApi})` : '';
-  if (status === 400) return 'A chave da API parece inválida ou a solicitação foi recusada.' + detalhe;
-  if (status === 401 || status === 403) return 'A chave da API não tem permissão para usar este modelo.' + detalhe;
-  if (status === 404) {
-    return 'O modelo configurado não foi encontrado. Confira o nome do modelo no popup da extensão.' + detalhe;
+class ErroApi extends Error {
+  readonly transitorio: boolean;
+  readonly modeloIndisponivel: boolean;
+
+  constructor(mensagem: string, transitorio: boolean, modeloIndisponivel = false) {
+    super(mensagem);
+    this.transitorio = transitorio;
+    this.modeloIndisponivel = modeloIndisponivel;
   }
-  if (status === 429) return 'Limite de uso da API atingido. Aguarde um instante e tente novamente.' + detalhe;
-  if (status >= 500) return 'O serviço do ' + provedorNome + ' está instável agora. Tente novamente em instantes.' + detalhe;
-  return 'A API do ' + provedorNome + ' respondeu com erro ' + status + '.' + detalhe;
+}
+
+function erroDaApi(provedorNome: string, status: number, detalheApi?: string): ErroApi {
+  const detalhe = detalheApi ? ` (${detalheApi})` : '';
+  if (status === 400) {
+    return new ErroApi('A chave da API parece inválida ou a solicitação foi recusada.' + detalhe, false);
+  }
+  if (status === 401 || status === 403) {
+    return new ErroApi('A chave da API não tem permissão para usar este modelo.' + detalhe, false);
+  }
+  if (status === 404) {
+    return new ErroApi(
+      'O modelo configurado não foi encontrado. Confira o nome do modelo no popup da extensão.' + detalhe,
+      false,
+      true,
+    );
+  }
+  if (status === 429) {
+    return new ErroApi('Limite de uso da API atingido. Aguarde um instante e tente novamente.' + detalhe, true);
+  }
+  if (status >= 500) {
+    return new ErroApi(
+      'O serviço do ' + provedorNome + ' está instável agora (alta procura). Tente novamente em instantes.' + detalhe,
+      true,
+    );
+  }
+  return new ErroApi('A API do ' + provedorNome + ' respondeu com erro ' + status + '.' + detalhe, false);
 }
 
 function extrairTexto(dados: RespostaGemini | null): string {
@@ -658,7 +780,7 @@ async function buscarPostsDoBlog(blogId: string): Promise<{ posts: PostDoBlog[];
   if (!/^[0-9]{5,25}$/.test(id)) {
     throw new Error('Não identifiquei o número do blog nesta página. Abra o editor de um post e tente de novo.');
   }
-  const url = 'https://www.blogger.com/feeds/' + id + '/posts/default?alt=json&max-results=25';
+  const url = 'https://www.blogger.com/feeds/' + id + '/posts/default?alt=json&max-results=50';
   let resposta: Response;
   try {
     resposta = await fetch(url, { redirect: 'follow' });
@@ -681,8 +803,8 @@ async function buscarPostsDoBlog(blogId: string): Promise<{ posts: PostDoBlog[];
     if (titulo && alternativo && alternativo.href) posts.push({ titulo, url: alternativo.href });
     const bruto = (entrada.content && entrada.content.$t) || '';
     const limpo = bruto.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    if (titulo && limpo.length > 200 && amostras.length < 8) {
-      amostras.push('Título: ' + titulo + '\n' + limpo.slice(0, 2500));
+    if (titulo && limpo.length > 200 && amostras.length < 10) {
+      amostras.push('Título: ' + titulo + '\n' + limpo.slice(0, 3000));
     }
   }
   return { posts, amostras };
@@ -693,7 +815,7 @@ async function aprenderEstilo(blogId: string): Promise<PerfilEstilo> {
   if (!amostras.length) {
     throw new Error('Não encontrei posts publicados com texto suficiente para aprender o estilo.');
   }
-  const material = amostras.join('\n\n---\n\n').slice(0, 20000);
+  const material = amostras.join('\n\n---\n\n').slice(0, 26000);
   const prompt = [
     'Você é um analista de estilo de escrita.',
     'Leia os textos abaixo, escritos pelo autor de um blog, e produza um PERFIL DE ESTILO objetivo, em português do Brasil.',
@@ -818,6 +940,210 @@ function normalizarCriacao(bruto: unknown): CriacaoPost {
 
 function agoraIso(): string {
   return new Date().toISOString();
+}
+
+// ---------------------------------------------------------------------------
+// Imagem para o post (comando criado pela IA + geração com os modelos do Google)
+// ---------------------------------------------------------------------------
+
+const ESQUEMA_PROMPT_IMAGEM = {
+  type: 'OBJECT',
+  properties: {
+    prompt: {
+      type: 'STRING',
+      description: 'Comando em inglês, detalhado (cena, estilo, luz, enquadramento), sem texto escrito dentro da imagem.',
+    },
+    alt: {
+      type: 'STRING',
+      description: 'Descrição da imagem em português do Brasil, com 70 a 125 caracteres.',
+    },
+  },
+  required: ['prompt', 'alt'],
+  propertyOrdering: ['prompt', 'alt'],
+};
+
+async function criarPromptImagem(mensagem: {
+  titulo: string;
+  texto: string;
+  palavraChave: string;
+  estilo: string;
+}): Promise<PromptImagem> {
+  const titulo = limitarTexto(mensagem.titulo, 160);
+  const texto = String(mensagem.texto || '').trim();
+  const palavraChave = limitarTexto(mensagem.palavraChave, 120);
+  if (titulo.length < 5 || texto.length < 200) {
+    throw new Error(
+      'Para montar o comando a partir do post, o post precisa ter título e um texto com pelo menos um parágrafo. Sem isso, escreva você mesmo o comando da imagem.',
+    );
+  }
+  const bruto = await chamarIA({
+    prompt: montarPromptImagemDoPost({ titulo, texto, palavraChave, estilo: limitarTexto(mensagem.estilo, 300) }),
+    esquema: ESQUEMA_PROMPT_IMAGEM,
+    temperatura: 0.5,
+    maxTokens: 8192,
+  });
+  const dados = (lerJson(bruto) || {}) as Record<string, unknown>;
+  const prompt = String(dados.prompt || '').trim();
+  if (!prompt) throw new Error('A IA não conseguiu criar o comando da imagem. Tente de novo.');
+  return { prompt: limitarTexto(prompt, 1200), alt: limitarTexto(dados.alt, 125) };
+}
+
+function montarPromptImagemDoPost(dados: {
+  titulo: string;
+  texto: string;
+  palavraChave: string;
+  estilo: string;
+}): string {
+  const trecho = dados.texto.length > 3000 ? dados.texto.slice(0, 3000) : dados.texto;
+  const linhas = [
+    'Você cria comandos ("prompts") de imagem para ilustrar posts de blog.',
+    'Leia a prévia do post abaixo e escreva um comando de imagem que represente bem o assunto.',
+    'Regras:',
+    '- prompt: escrito em inglês, com cena, estilo (fotografia ou ilustração), iluminação e enquadramento;',
+    '  sem escrever texto ou palavras dentro da imagem; sem marcas conhecidas nem pessoas famosas.',
+    '- alt: em português do Brasil, descrevendo o que a imagem mostra, com 70 a 125 caracteres,',
+    '  sem começar com "imagem de" nem "foto de".',
+    'Responda SOMENTE com o JSON pedido, sem cercas de código (```).',
+  ];
+  if (dados.palavraChave) linhas.push('', 'Palavra-chave do post: "' + dados.palavraChave + '"');
+  if (dados.estilo) linhas.push('Tom do blog (use só como referência): ' + dados.estilo);
+  linhas.push('', 'Título do post: ' + dados.titulo, 'Prévia do texto:', '"""', trecho, '"""');
+  return linhas.join('\n');
+}
+
+async function gerarImagem(mensagem: { prompt: string; proporcao: string; alt: string }): Promise<ResultadoImagem> {
+  const chave = await chaveDaSessao('google');
+  if (!chave) {
+    throw new Error(
+      'A geração de imagem usa o serviço do Google. Salve e desbloqueie a chave do Google no popup da extensão, ou escolha uma imagem do computador.',
+    );
+  }
+  const prompt = String(mensagem.prompt || '').trim();
+  if (prompt.length < 15) throw new Error('Escreva o que a imagem deve mostrar (pelo menos 15 caracteres).');
+  const proporcao = /^[0-9]{1,2}:[0-9]{1,2}$/.test(String(mensagem.proporcao || ''))
+    ? String(mensagem.proporcao)
+    : '16:9';
+  let ultimoErro: unknown = null;
+  for (const modelo of MODELOS_IMAGEM) {
+    try {
+      const imagem = await pedirImagem(chave, modelo, limitarTexto(prompt, 1200), proporcao);
+      return { imagem, modelo, alt: limitarTexto(mensagem.alt, 125) };
+    } catch (erro) {
+      ultimoErro = erro;
+      if (erro instanceof ErroApi && erro.modeloIndisponivel) continue;
+      throw erro;
+    }
+  }
+  throw ultimoErro instanceof Error ? ultimoErro : new Error('Não consegui gerar a imagem agora. Tente novamente.');
+}
+
+async function pedirImagem(apiKey: string, modelo: string, prompt: string, proporcao: string): Promise<string> {
+  try {
+    return await pedirImagemInteracoes(apiKey, modelo, prompt, proporcao);
+  } catch (erro) {
+    if (erro instanceof ErroApi && erro.modeloIndisponivel) {
+      return await pedirImagemClassica(apiKey, modelo, prompt, proporcao);
+    }
+    throw erro;
+  }
+}
+
+interface RespostaInteracao {
+  steps?: Array<{
+    type?: string;
+    content?: Array<{ type?: string; text?: string; mime_type?: string; mimeType?: string; data?: string }>;
+  }>;
+  error?: { message?: string };
+}
+
+async function pedirImagemInteracoes(
+  apiKey: string,
+  modelo: string,
+  prompt: string,
+  proporcao: string,
+): Promise<string> {
+  const corpo = {
+    model: modelo,
+    input: prompt,
+    response_format: { type: 'image', mime_type: 'image/jpeg', aspect_ratio: proporcao },
+    store: false,
+  };
+  const resposta = await pedirApi(ENDPOINT_INTERACOES, apiKey, corpo, 180000);
+  const dados = (await resposta.json().catch(() => null)) as RespostaInteracao | null;
+  if (!resposta.ok) throw erroDaApi('Google', resposta.status, dados?.error?.message ?? undefined);
+  const extraida = extrairImagemInteracao(dados);
+  if (extraida.imagem) return extraida.imagem;
+  if (extraida.texto) throw new ErroApi('A imagem não veio. Resposta do serviço: ' + extraida.texto, false);
+  throw new ErroApi('O serviço não devolveu imagem nem explicação. Tente novamente.', true);
+}
+
+function extrairImagemInteracao(dados: RespostaInteracao | null): { imagem: string; texto: string } {
+  let texto = '';
+  for (const passo of (dados && dados.steps) || []) {
+    for (const bloco of passo.content || []) {
+      if (bloco.type === 'image' && bloco.data) {
+        const tipo = bloco.mime_type || bloco.mimeType || 'image/jpeg';
+        return { imagem: 'data:' + tipo + ';base64,' + bloco.data, texto };
+      }
+      if (bloco.type === 'text' && bloco.text) texto += bloco.text + ' ';
+    }
+  }
+  return { imagem: '', texto: limitarTexto(texto, 300) };
+}
+
+interface RespostaClassica {
+  candidates?: Array<{ content?: { parts?: Array<Record<string, unknown>> } }>;
+  error?: { message?: string };
+}
+
+// Caminho antigo (generateContent): só usado se a API nova não aceitar o modelo.
+async function pedirImagemClassica(apiKey: string, modelo: string, prompt: string, proporcao: string): Promise<string> {
+  const corpo = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: proporcao } },
+  };
+  const url = ENDPOINT_GOOGLE + '/' + encodeURIComponent(modelo) + ':generateContent';
+  const resposta = await pedirApi(url, apiKey, corpo, 180000);
+  const dados = (await resposta.json().catch(() => null)) as RespostaClassica | null;
+  if (!resposta.ok) throw erroDaApi('Google', resposta.status, dados?.error?.message ?? undefined);
+  const candidato = dados && dados.candidates && dados.candidates[0];
+  const partes = (candidato && candidato.content && candidato.content.parts) || [];
+  let texto = '';
+  for (const parte of partes) {
+    const registro = (parte || {}) as Record<string, unknown>;
+    const bruto = (registro.inlineData || registro.inline_data) as
+      | { mimeType?: string; mime_type?: string; data?: string }
+      | undefined;
+    if (bruto && bruto.data) {
+      return 'data:' + (bruto.mimeType || bruto.mime_type || 'image/jpeg') + ';base64,' + bruto.data;
+    }
+    if (typeof registro.text === 'string') texto += registro.text + ' ';
+  }
+  if (texto.trim()) throw new ErroApi('A imagem não veio. Resposta do serviço: ' + limitarTexto(texto, 300), false);
+  throw new ErroApi('O serviço não devolveu imagem. Tente novamente.', true);
+}
+
+async function pedirApi(url: string, apiKey: string, corpo: unknown, tempoLimite: number): Promise<Response> {
+  const controlador = new AbortController();
+  const relogio = setTimeout(() => controlador.abort(), tempoLimite);
+  try {
+    return await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify(corpo),
+      signal: controlador.signal,
+    });
+  } catch (erro) {
+    if (erro && (erro as { name?: string }).name === 'AbortError') {
+      throw new ErroApi('A imagem demorou demais para ficar pronta. Tente novamente.', true);
+    }
+    throw new ErroApi('Não consegui falar com o serviço de imagens do Google. Verifique a conexão.', true);
+  } finally {
+    clearTimeout(relogio);
+  }
 }
 
 // ---------------------------------------------------------------------------

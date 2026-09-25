@@ -82,7 +82,9 @@ estiver aberto, a chave desbloqueada fica apenas na memória da sessão (`chrome
      personalidade, informe o assunto e os pontos que precisam aparecer, e receba um post
      completo com título, meta-descrição, slug, palavras-chave, links internos e texto já
      dentro das regras de SEO; revise a "Conformidade SEO" e insira no post.
-   - **Imagens** — escaneia as imagens sem `alt`, gera sugestões (alt + legenda) e aplica no post.
+   - **Imagens** — crie uma imagem nova (montada a partir do post, com comando seu, escolhida do
+     computador ou padrão), confira a descrição e insira no post; e escaneie as imagens
+     existentes sem `alt` para gerar e aplicar sugestões (alt + legenda).
    - **Checklist** — auditoria em tempo real (título, meta-descrição, densidade da palavra-chave,
      subtítulos, alt, links) e verificação de links externos.
 

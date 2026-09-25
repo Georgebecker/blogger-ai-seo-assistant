@@ -96,6 +96,8 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 
 ## Linha do tempo
 
+- **25/09/2026 (tarde)** — Geração de imagem no post: comando criado pela IA a partir do título/texto, edição manual do comando, escolha de arquivo do computador e imagem padrão (espaço reservado desenhado em canvas); prévia com alt (sugerido pela IA ou manual), inserir no post, baixar e copiar. Usa a API nova de imagens do Google (Interactions, `POST /v1beta/interactions` com `response_format: {type: "image"}`), com recuo automático para o `generateContent` clássico e fila de modelos (`gemini-3.1-flash-image` → `3.1-flash-lite-image` → `3-pro-image` → `2.5-flash-image`). Só o Google gera imagem (DeepSeek não gera).
+- **25/09/2026 (tarde)** — Erros passageiros (429/503, "alta procura") agora são repetidos (2,5 s e 7 s) e, se a outra chave estiver desbloqueada, a chamada continua no outro serviço antes de desistir. A sessão passou a guardar as duas chaves (mapa `{ativo, chaves}` em `chrome.storage.session`, com migração do formato antigo). A leitura do estilo passou a usar até 10 textos completos (3.000 caracteres cada).
 - **25/09/2026** — Aba "Criar" (gerador de posts por personalidade, com aprendizado de estilo pelos posts do blog e checklist de SEO embutido) + auditoria alinhada ao padrão do usuário (título 50–60, meta 150–160, densidade 1–2%, 2+ imagens, links internos; ALT 70–125).
 - **25/09/2026** — Suporte a dois provedores de IA: Google Gemini ou DeepSeek (escolha no popup; chaves criptografadas separadas; chamadas no service worker).
 - **25/09/2026** — Modelo padrão do Google corrigido (`gemini-2.0-flash` aposentado pela API → `gemini-3.8-flash`), com migração automática de modelos antigos salvos.

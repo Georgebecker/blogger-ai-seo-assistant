@@ -68,6 +68,17 @@ export interface CriacaoPost {
   observacoes: string[];
 }
 
+export interface ResultadoImagem {
+  imagem: string;
+  modelo: string;
+  alt: string;
+}
+
+export interface PromptImagem {
+  prompt: string;
+  alt: string;
+}
+
 export type MensagemParaFundo =
   | { type: 'GET_STATUS' }
   | { type: 'SAVE_KEY'; provedor: Provedor; apiKey: string; masterPassword: string }
@@ -79,6 +90,8 @@ export type MensagemParaFundo =
   | { type: 'AI_IMAGE_ALT'; src: string; contexto: ContextoImagem }
   | { type: 'AI_APRENDER_ESTILO'; blogId: string }
   | { type: 'AI_GERAR_POST'; persona: string; assunto: string; pontos: string; blogId: string }
+  | { type: 'AI_PROMPT_IMAGEM'; titulo: string; texto: string; palavraChave: string; estilo: string }
+  | { type: 'AI_GERAR_IMAGEM'; prompt: string; proporcao: string; alt: string }
   | { type: 'CHECK_LINKS'; urls: string[] };
 
 export type RespostaFundo<T = unknown> = { ok: true; data: T } | { ok: false; error: string };

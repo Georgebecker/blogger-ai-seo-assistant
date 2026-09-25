@@ -215,6 +215,22 @@
 
 .bai-copia { position: fixed; top: -1000px; left: -1000px; opacity: 0; }
 
+.bai-caixa-imagem {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fbfbfd;
+  margin-bottom: 10px;
+}
+.bai-titulo-caixa { font-weight: 700; font-size: 12.5px; color: #4338ca; margin-bottom: 8px; }
+.bai-linha-campos { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.bai-rotulo-inline { margin: 0; }
+.bai-entrada-curta { width: auto; min-width: 150px; padding: 6px 8px; }
+.bai-preview-imagem { margin: 8px 0; }
+.bai-preview-img { display: block; width: 100%; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 6px; }
+.bai-detalhe { margin-top: 8px; font-size: 11.5px; color: #4b5563; }
+.bai-detalhe summary { cursor: pointer; color: #4f46e5; font-weight: 600; }
+
 #bai-seo-root .bai-area { min-height: 64px; resize: vertical; }
 
 .bai-preview {

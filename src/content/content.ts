@@ -8,7 +8,9 @@ import type {
   CriacaoPost,
   MensagemParaFundo,
   PerfilEstilo,
+  PromptImagem,
   RespostaFundo,
+  ResultadoImagem,
   ResultadoLink,
   ResultadoLinks,
   StatusChave,
@@ -56,6 +58,13 @@ interface ResultadoAnaliseLinks {
   internos: number;
 }
 
+interface ImagemCriada {
+  fonte: 'modelo' | 'arquivo' | 'padrao';
+  dataUrl: string;
+  alt: string;
+  modelo: string;
+}
+
 interface Estado {
   abaAtual: AbaId;
   janela: Window | null;
@@ -72,6 +81,9 @@ interface Estado {
   linksExternos: string[];
   resultadoLinks: ResultadoLink[] | null;
   linksTemPermissao: boolean;
+  imagemCriada: ImagemCriada | null;
+  altImagem: string;
+  gerandoImagem: boolean;
 }
 
 const estado: Estado = {
@@ -90,6 +102,9 @@ const estado: Estado = {
   linksExternos: [],
   resultadoLinks: null,
   linksTemPermissao: false,
+  imagemCriada: null,
+  altImagem: '',
+  gerandoImagem: false,
 };
 
 interface Refs {
@@ -115,6 +130,15 @@ interface Refs {
   botaoAplicarTodas: HTMLButtonElement;
   statusImagens: HTMLElement;
   listaImagens: HTMLElement;
+  promptImagem: HTMLTextAreaElement;
+  proporcaoImagem: HTMLSelectElement;
+  botaoPromptImagem: HTMLButtonElement;
+  botaoGerarImagem: HTMLButtonElement;
+  botaoEscolherImagem: HTMLButtonElement;
+  botaoImagemPadrao: HTMLButtonElement;
+  arquivoImagem: HTMLInputElement;
+  statusImagem: HTMLElement;
+  previewImagem: HTMLElement;
   resumoCheck: HTMLElement;
   checkAtualizado: HTMLElement;
   listaCheck: HTMLElement;
@@ -1011,6 +1035,342 @@ function inserirLegenda(item: ItemImagem): void {
 }
 
 // ---------------------------------------------------------------------------
+// Imagem nova para o post (gerar com IA, escolher do computador ou padrão)
+// ---------------------------------------------------------------------------
+
+const MIME_IMAGEM_ACEITO = /^image\/(png|jpe?g|webp|gif|avif)$/i;
+
+function proporcaoEscolhida(): string {
+  const valor = refs.proporcaoImagem ? refs.proporcaoImagem.value : '';
+  return /^[0-9]{1,2}:[0-9]{1,2}$/.test(valor) ? valor : '16:9';
+}
+
+async function montarPromptDaImagem(): Promise<void> {
+  const editor = localizarEditor();
+  const texto = editor ? lerTextoDoEditor(editor) : '';
+  const titulo = lerTitulo();
+  if (!titulo || texto.trim().length < 200) {
+    definirStatus(
+      refs.statusImagem,
+      'Para montar o comando a partir do post, o post precisa ter título e pelo menos um parágrafo escrito. Sem isso, escreva você mesmo o comando da imagem.',
+      'aviso',
+    );
+    return;
+  }
+  ocupar(refs.botaoPromptImagem, true, 'Lendo o post...');
+  definirStatus(refs.statusImagem, 'A IA está lendo o post para criar o comando da imagem...', 'info');
+  try {
+    const dados = await enviarParaFundo<PromptImagem>({
+      type: 'AI_PROMPT_IMAGEM',
+      titulo,
+      texto: texto.slice(0, LIMITE_TEXTO),
+      palavraChave: estado.keyword.trim(),
+      estilo: refs.persona ? refs.persona.value.trim().slice(0, 300) : '',
+    });
+    refs.promptImagem.value = dados.prompt;
+    estado.altImagem = dados.alt;
+    if (estado.imagemCriada && !estado.imagemCriada.alt) estado.imagemCriada.alt = dados.alt;
+    renderizarPreviewImagem();
+    definirStatus(
+      refs.statusImagem,
+      'Comando pronto. Revise se quiser e clique em "Gerar imagem com IA".',
+      'ok',
+    );
+  } catch (erro) {
+    definirStatus(refs.statusImagem, (erro as Error).message, 'erro');
+  } finally {
+    ocupar(refs.botaoPromptImagem, false);
+  }
+}
+
+async function gerarImagemIA(): Promise<void> {
+  const prompt = refs.promptImagem.value.trim();
+  if (prompt.length < 15) {
+    definirStatus(
+      refs.statusImagem,
+      'Escreva o comando da imagem (ou clique em "Montar pelo post", que precisa de título e texto no post).',
+      'aviso',
+    );
+    refs.promptImagem.focus();
+    return;
+  }
+  if (estado.gerandoImagem) return;
+  estado.gerandoImagem = true;
+  ocupar(refs.botaoGerarImagem, true, 'Gerando imagem...');
+  definirStatus(
+    refs.statusImagem,
+    'Gerando a imagem (pode levar até um minuto; cada imagem gerada é cobrada pelo Google).',
+    'info',
+  );
+  try {
+    const dados = await enviarParaFundo<ResultadoImagem>({
+      type: 'AI_GERAR_IMAGEM',
+      prompt,
+      proporcao: proporcaoEscolhida(),
+      alt: estado.altImagem,
+    });
+    estado.imagemCriada = {
+      fonte: 'modelo',
+      dataUrl: dados.imagem,
+      alt: dados.alt || estado.altImagem,
+      modelo: dados.modelo,
+    };
+    estado.altImagem = estado.imagemCriada.alt;
+    renderizarPreviewImagem();
+    definirStatus(refs.statusImagem, 'Imagem pronta. Confira a descrição (alt) e clique em "Inserir no post".', 'ok');
+  } catch (erro) {
+    definirStatus(refs.statusImagem, (erro as Error).message, 'erro');
+  } finally {
+    estado.gerandoImagem = false;
+    ocupar(refs.botaoGerarImagem, false);
+  }
+}
+
+function escolherImagemDoComputador(arquivos: FileList | null): void {
+  const arquivo = arquivos && arquivos[0];
+  if (!arquivo) return;
+  if (!MIME_IMAGEM_ACEITO.test(arquivo.type || '')) {
+    definirStatus(refs.statusImagem, 'Esse arquivo não parece ser uma imagem (use PNG, JPG, WEBP ou GIF).', 'erro');
+    return;
+  }
+  if (arquivo.size > 8 * 1024 * 1024) {
+    definirStatus(refs.statusImagem, 'A imagem é grande demais (máximo 8 MB). Reduza e tente de novo.', 'erro');
+    return;
+  }
+  const leitor = new FileReader();
+  leitor.onload = () => {
+    const dataUrl = String(leitor.result || '');
+    if (!dataUrl.startsWith('data:image/')) {
+      definirStatus(refs.statusImagem, 'Não consegui ler esse arquivo como imagem.', 'erro');
+      return;
+    }
+    estado.imagemCriada = { fonte: 'arquivo', dataUrl, alt: estado.altImagem, modelo: '' };
+    renderizarPreviewImagem();
+    definirStatus(refs.statusImagem, 'Imagem do computador carregada. Revise a descrição (alt) e insira no post.', 'ok');
+  };
+  leitor.onerror = () => definirStatus(refs.statusImagem, 'Não consegui ler o arquivo escolhido.', 'erro');
+  leitor.readAsDataURL(arquivo);
+}
+
+function criarImagemPadrao(): string {
+  const tela = document.createElement('canvas');
+  tela.width = 1200;
+  tela.height = 675;
+  const contexto = tela.getContext('2d');
+  if (!contexto) return '';
+  const gradiente = contexto.createLinearGradient(0, 0, 1200, 675);
+  gradiente.addColorStop(0, '#4f46e5');
+  gradiente.addColorStop(1, '#7c3aed');
+  contexto.fillStyle = gradiente;
+  contexto.fillRect(0, 0, 1200, 675);
+  contexto.globalAlpha = 0.12;
+  contexto.fillStyle = '#ffffff';
+  for (let x = -160; x < 1400; x += 140) {
+    contexto.beginPath();
+    contexto.arc(x, 110, 95, 0, Math.PI * 2);
+    contexto.fill();
+  }
+  contexto.globalAlpha = 1;
+  contexto.fillStyle = '#ffffff';
+  contexto.textAlign = 'center';
+  contexto.font = '600 58px system-ui, "Segoe UI", Arial, sans-serif';
+  contexto.fillText('Adicione a imagem do post aqui', 600, 320);
+  contexto.font = '400 28px system-ui, "Segoe UI", Arial, sans-serif';
+  contexto.fillText('Troque por uma imagem de verdade antes de publicar.', 600, 378);
+  return tela.toDataURL('image/jpeg', 0.9);
+}
+
+function usarImagemPadrao(): void {
+  const dataUrl = criarImagemPadrao();
+  if (!dataUrl) {
+    definirStatus(refs.statusImagem, 'Não consegui montar a imagem padrão neste navegador.', 'erro');
+    return;
+  }
+  estado.imagemCriada = {
+    fonte: 'padrao',
+    dataUrl,
+    alt: estado.altImagem || 'Espaço reservado para a imagem do post (trocar antes de publicar)',
+    modelo: '',
+  };
+  estado.altImagem = estado.imagemCriada.alt;
+  renderizarPreviewImagem();
+  definirStatus(
+    refs.statusImagem,
+    'Imagem padrão pronta: ela é só um espaço reservado. Troque por uma imagem de verdade antes de publicar.',
+    'aviso',
+  );
+}
+
+function renderizarPreviewImagem(): void {
+  const caixa = refs.previewImagem;
+  if (!caixa) return;
+  caixa.textContent = '';
+  const criada = estado.imagemCriada;
+  if (!criada || !criada.dataUrl) {
+    caixa.classList.add('bai-oculto');
+    return;
+  }
+  caixa.classList.remove('bai-oculto');
+
+  const origem =
+    criada.fonte === 'modelo'
+      ? 'Gerada pela IA' + (criada.modelo ? ' (' + criada.modelo + ')' : '')
+      : criada.fonte === 'arquivo'
+        ? 'Escolhida do computador'
+        : 'Imagem padrão (espaço reservado)';
+
+  const imagem = criar('img', {
+    className: 'bai-preview-img',
+    src: criada.dataUrl,
+    alt: criada.alt || 'Prévia da imagem',
+  }) as HTMLImageElement;
+  const meta = criar('div', {
+    className: 'bai-dica',
+    texto: origem + ' - cerca de ' + Math.max(1, Math.round(criada.dataUrl.length / 1024)) + ' KB',
+  });
+
+  const campoAlt = criar('div', { className: 'bai-campo' });
+  campoAlt.appendChild(
+    criar('label', { className: 'bai-rotulo', texto: 'Descrição da imagem (alt)', for: 'bai-alt-imagem' }),
+  );
+  const alt = criar('input', {
+    type: 'text',
+    id: 'bai-alt-imagem',
+    className: 'bai-entrada',
+    maxlength: '160',
+    placeholder: 'ex.: caderno aberto com gráficos coloridos sobre a mesa',
+  }) as HTMLInputElement;
+  alt.value = criada.alt;
+  alt.addEventListener('input', () => {
+    estado.altImagem = alt.value;
+    if (estado.imagemCriada) estado.imagemCriada.alt = alt.value;
+  });
+  campoAlt.appendChild(alt);
+
+  const dica = criar('div', { className: 'bai-dica', texto: 'Dica: o alt ideal tem de 70 a 125 caracteres.' });
+
+  const acoes = criar('div', { className: 'bai-acoes-img' });
+  acoes.appendChild(botaoAcao('Inserir no post', () => inserirImagemNoPost()));
+  acoes.appendChild(botaoAcao('Sugerir descrição com IA', () => void sugerirAltDaImagem()));
+  acoes.appendChild(botaoAcao('Baixar imagem', () => baixarImagemCriada()));
+  acoes.appendChild(botaoAcao('Copiar imagem', () => void copiarImagemCriada()));
+
+  caixa.append(imagem, meta, campoAlt, dica, acoes);
+}
+
+async function sugerirAltDaImagem(): Promise<void> {
+  const criada = estado.imagemCriada;
+  if (!criada || !criada.dataUrl) return;
+  definirStatus(refs.statusImagem, 'A IA está olhando a imagem para sugerir a descrição...', 'info');
+  try {
+    const dados = await enviarParaFundo<SugestaoAlt>({
+      type: 'AI_IMAGE_ALT',
+      src: criada.dataUrl,
+      contexto: { titulo: lerTitulo(), palavraChave: estado.keyword.trim() },
+    });
+    criada.alt = dados.alt;
+    estado.altImagem = dados.alt;
+    renderizarPreviewImagem();
+    definirStatus(refs.statusImagem, 'Descrição sugerida. Confira e insira no post.', 'ok');
+  } catch (erro) {
+    definirStatus(refs.statusImagem, (erro as Error).message, 'erro');
+  }
+}
+
+function inserirImagemNoPost(): void {
+  const criada = estado.imagemCriada;
+  if (!criada || !criada.dataUrl) return;
+  const editor = localizarEditor();
+  if (!editor) {
+    definirStatus(refs.statusImagem, 'Não encontrei o editor. Use "Apontar manualmente" no rodapé do painel.', 'erro');
+    return;
+  }
+  const alt = (criada.alt || '').trim();
+  if (alt.length < 10) {
+    definirStatus(
+      refs.statusImagem,
+      'Escreva uma descrição (alt) com pelo menos 10 caracteres antes de inserir - isso ajuda no SEO e na acessibilidade.',
+      'aviso',
+    );
+    return;
+  }
+  const avisoPadrao =
+    criada.fonte === 'padrao'
+      ? ' Esta é uma imagem padrão (espaço reservado): troque por uma imagem de verdade antes de publicar.'
+      : '';
+  const confirmado = window.confirm(
+    'Inserir a imagem no fim do post?' + avisoPadrao + ' Dá para desfazer com Ctrl+Z.',
+  );
+  if (!confirmado) return;
+  const doc = editor.ownerDocument;
+  editor.focus();
+  const selecao = doc.getSelection();
+  const intervalo = doc.createRange();
+  intervalo.selectNodeContents(editor);
+  intervalo.collapse(false);
+  if (selecao) {
+    selecao.removeAllRanges();
+    selecao.addRange(intervalo);
+  }
+  const html = '<p><img src="' + criada.dataUrl + '" alt="' + escaparHtml(alt) + '"></p>';
+  let aplicado = false;
+  try {
+    aplicado = doc.execCommand('insertHTML', false, html);
+  } catch {
+    aplicado = false;
+  }
+  if (!aplicado) {
+    definirStatus(
+      refs.statusImagem,
+      'O Blogger não aceitou a inserção automática. Use "Baixar imagem" e envie pelo botão de imagem do próprio Blogger; depois use "Escanear imagens" para completar o alt.',
+      'aviso',
+    );
+    return;
+  }
+  definirStatus(
+    refs.statusImagem,
+    'Imagem inserida no fim do post. Confira e salve o rascunho. Se ela não aparecer depois de publicar, baixe a imagem e envie pelo botão de imagem do Blogger.',
+    'ok',
+  );
+  agendarChecklist();
+}
+
+function baixarImagemCriada(): void {
+  const criada = estado.imagemCriada;
+  if (!criada || !criada.dataUrl) return;
+  const nome =
+    (criada.alt || 'imagem-do-post')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 50) || 'imagem-do-post';
+  const link = document.createElement('a');
+  link.href = criada.dataUrl;
+  link.download = nome + '.jpg';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  definirStatus(refs.statusImagem, 'Imagem salva na pasta de downloads.', 'ok');
+}
+
+async function copiarImagemCriada(): Promise<void> {
+  const criada = estado.imagemCriada;
+  if (!criada || !criada.dataUrl) return;
+  try {
+    const resposta = await fetch(criada.dataUrl);
+    const blob = await resposta.blob();
+    if (typeof ClipboardItem === 'undefined') {
+      definirStatus(refs.statusImagem, 'Este navegador não deixa copiar imagens. Use "Baixar imagem".', 'aviso');
+      return;
+    }
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/jpeg']: blob })]);
+    definirStatus(refs.statusImagem, 'Imagem copiada. Cole no editor com Ctrl+V.', 'ok');
+  } catch {
+    definirStatus(refs.statusImagem, 'Não consegui copiar a imagem. Use "Baixar imagem".', 'aviso');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Aba Checklist
 // ---------------------------------------------------------------------------
 
@@ -1398,10 +1758,15 @@ async function aprenderEstilo(): Promise<void> {
     const perfil = await enviarParaFundo<PerfilEstilo>({ type: 'AI_APRENDER_ESTILO', blogId });
     refs.persona.value = perfil.perfil;
     gravarArmazenamentoLocal({ [CHAVE_PERSONA]: perfil.perfil });
+    const quantidade = perfil.posts.length;
+    const poucos =
+      quantidade < 10
+        ? ' O ideal são 10 textos ou mais; com menos que isso, complete a personalidade à mão.'
+        : '';
     definirStatus(
       refs.statusCriar,
-      'Estilo aprendido de ' + perfil.posts.length + ' post(s) do blog e salvo na personalidade. Revise se quiser.',
-      'ok',
+      'Estilo aprendido de ' + quantidade + ' post(s) do blog e salvo na personalidade.' + poucos + ' Revise se quiser.',
+      quantidade < 10 ? 'aviso' : 'ok',
     );
   } catch (erro) {
     definirStatus(refs.statusCriar, (erro as Error).message, 'erro');
@@ -1910,6 +2275,8 @@ function montarSecaoCriar(): HTMLElement {
 function montarSecaoImagens(): HTMLElement {
   const secao = criar('section', { className: 'bai-secao bai-secao-imagens' });
 
+  secao.appendChild(montarCaixaImagemNova());
+
   const linha = criar('div', { className: 'bai-linha-botoes' });
   const escanear = criar('button', {
     className: 'bai-botao',
@@ -1941,6 +2308,102 @@ function montarSecaoImagens(): HTMLElement {
   refs.statusImagens = status;
   refs.listaImagens = lista;
   return secao;
+}
+
+function montarCaixaImagemNova(): HTMLElement {
+  const caixa = criar('div', { className: 'bai-caixa-imagem' });
+  caixa.appendChild(criar('div', { className: 'bai-titulo-caixa', texto: 'Imagem nova para o post' }));
+
+  const campoPrompt = criar('div', { className: 'bai-campo' });
+  campoPrompt.appendChild(
+    criar('label', { className: 'bai-rotulo', texto: 'O que a imagem deve mostrar?', for: 'bai-prompt-imagem' }),
+  );
+  const prompt = criar('textarea', {
+    id: 'bai-prompt-imagem',
+    className: 'bai-entrada bai-area',
+    rows: '2',
+    placeholder: 'ex.: mesa de escritório com notebook aberto e café, luz da manhã, estilo fotográfico',
+  }) as HTMLTextAreaElement;
+  campoPrompt.appendChild(prompt);
+
+  const linhaPrompt = criar('div', { className: 'bai-linha-botoes' });
+  const montar = criar('button', {
+    className: 'bai-botao',
+    texto: 'Montar pelo post',
+    type: 'button',
+    onclick: () => void montarPromptDaImagem(),
+  }) as HTMLButtonElement;
+  const gerar = criar('button', {
+    className: 'bai-botao bai-principal',
+    texto: 'Gerar imagem com IA',
+    type: 'button',
+    onclick: () => void gerarImagemIA(),
+  }) as HTMLButtonElement;
+  linhaPrompt.append(montar, gerar);
+
+  const linhaProporcao = criar('div', { className: 'bai-linha-campos' });
+  const rotuloProporcao = criar('label', {
+    className: 'bai-rotulo bai-rotulo-inline',
+    texto: 'Formato',
+    for: 'bai-proporcao-imagem',
+  });
+  const proporcao = criar('select', {
+    id: 'bai-proporcao-imagem',
+    className: 'bai-entrada bai-entrada-curta',
+  }) as HTMLSelectElement;
+  for (const valor of ['16:9', '4:3', '1:1', '3:4', '9:16']) {
+    proporcao.appendChild(
+      criar('option', {
+        value: valor,
+        texto: valor === '16:9' ? '16:9 (capa do post)' : valor,
+      }) as HTMLOptionElement,
+    );
+  }
+  linhaProporcao.append(rotuloProporcao, proporcao);
+
+  const linhaArquivo = criar('div', { className: 'bai-linha-botoes' });
+  const arquivo = criar('input', { type: 'file', accept: 'image/*', className: 'bai-oculto' }) as HTMLInputElement;
+  arquivo.addEventListener('change', () => escolherImagemDoComputador(arquivo.files));
+  const escolher = criar('button', {
+    className: 'bai-botao',
+    texto: 'Escolher do computador',
+    type: 'button',
+    onclick: () => arquivo.click(),
+  }) as HTMLButtonElement;
+  const padrao = criar('button', {
+    className: 'bai-botao',
+    texto: 'Usar imagem padrão',
+    type: 'button',
+    onclick: () => usarImagemPadrao(),
+  }) as HTMLButtonElement;
+  linhaArquivo.append(escolher, padrao, arquivo);
+
+  const status = criar('div', { className: 'bai-status bai-info' });
+  const preview = criar('div', { className: 'bai-preview-imagem bai-oculto' });
+
+  const detalhe = criar('details', { className: 'bai-detalhe' });
+  detalhe.appendChild(criar('summary', { texto: 'Como a imagem é feita' }));
+  detalhe.appendChild(
+    criar('div', {
+      className: 'bai-dica',
+      texto:
+        'A imagem é criada pelo serviço de imagem do Google, a partir do comando que você escreveu (o Google cobra por imagem gerada). ' +
+        'Se preferir, escreva o comando, gere a imagem em outro lugar e use "Escolher do computador". ' +
+        'Não deu certo? Use "Usar imagem padrão" para deixar um espaço reservado e troque depois.',
+    }),
+  );
+
+  caixa.append(campoPrompt, linhaPrompt, linhaProporcao, linhaArquivo, status, preview, detalhe);
+  refs.promptImagem = prompt;
+  refs.proporcaoImagem = proporcao;
+  refs.botaoPromptImagem = montar;
+  refs.botaoGerarImagem = gerar;
+  refs.botaoEscolherImagem = escolher;
+  refs.botaoImagemPadrao = padrao;
+  refs.arquivoImagem = arquivo;
+  refs.statusImagem = status;
+  refs.previewImagem = preview;
+  return caixa;
 }
 
 function montarSecaoChecklist(): HTMLElement {
@@ -2142,8 +2605,14 @@ function iniciarVigias(): void {
       estado.imagens = [];
       estado.totalImagens = 0;
       estado.resultadoLinks = null;
+      estado.imagemCriada = null;
+      estado.altImagem = '';
       if (refs.resultadoTexto) refs.resultadoTexto.textContent = '';
       if (refs.listaImagens) refs.listaImagens.textContent = '';
+      if (refs.previewImagem) {
+        refs.previewImagem.textContent = '';
+        refs.previewImagem.classList.add('bai-oculto');
+      }
       void atualizarStatusChave();
     }
   }, INTERVALO_VARREDURA);
