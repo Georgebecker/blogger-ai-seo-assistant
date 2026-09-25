@@ -1,7 +1,7 @@
 // popup.ts — configuração da chave (BYOK), modelo e permissões.
 // A chave nunca é registrada em log; a criptografia acontece no service worker.
 
-import type { MensagemParaFundo, RespostaFundo, StatusChave } from '../lib/messages';
+import type { MensagemParaFundo, Provedor, RespostaFundo, StatusChave } from '../lib/messages';
 
 function porId<T extends HTMLElement>(id: string): T {
   const elemento = document.getElementById(id);
@@ -10,6 +10,9 @@ function porId<T extends HTMLElement>(id: string): T {
 }
 
 const refs = {
+  provider: porId<HTMLSelectElement>('provider'),
+  providerNome: porId<HTMLElement>('providerNome'),
+  chaves: porId<HTMLElement>('chaves'),
   status: porId<HTMLElement>('status'),
   msg: porId<HTMLElement>('msg'),
   apiKey: porId<HTMLInputElement>('apiKey'),
@@ -21,6 +24,14 @@ const refs = {
   modelo: porId<HTMLInputElement>('model'),
   permitirLinks: porId<HTMLButtonElement>('grantLinks'),
   alternarChave: porId<HTMLButtonElement>('toggleKey'),
+  getKey: porId<HTMLAnchorElement>('getKey'),
+};
+
+const NOMES_PROVEDOR: Record<Provedor, string> = { google: 'Google', deepseek: 'DeepSeek' };
+
+const LINKS_CHAVE: Record<Provedor, { url: string; texto: string }> = {
+  google: { url: 'https://aistudio.google.com/app/apikey', texto: 'Criar uma chave no Google AI Studio' },
+  deepseek: { url: 'https://platform.deepseek.com/api_keys', texto: 'Criar uma chave no DeepSeek' },
 };
 
 function enviar<T>(mensagem: MensagemParaFundo): Promise<T> {
@@ -62,13 +73,26 @@ function comBotao(botao: HTMLButtonElement, ocupado: boolean, rotulo?: string): 
   }
 }
 
+function atualizarLinkChave(provedor: Provedor): void {
+  const link = LINKS_CHAVE[provedor];
+  refs.getKey.href = link.url;
+  refs.getKey.textContent = link.texto;
+}
+
 async function atualizarStatus(): Promise<void> {
   try {
     const dados = await enviar<StatusChave>({ type: 'GET_STATUS' });
+    refs.provider.value = dados.provedor;
+    refs.providerNome.textContent = NOMES_PROVEDOR[dados.provedor];
+    const salva = dados.provedor === 'deepseek' ? dados.temDeepSeek : dados.temGoogle;
     refs.status.textContent = dados.desbloqueada
       ? 'chave ativa'
-      : (dados.temChave ? 'chave bloqueada' : 'sem chave salva');
+      : (salva ? 'chave bloqueada' : 'sem chave salva');
+    refs.chaves.textContent =
+      'Google: ' + (dados.temGoogle ? 'chave salva' : 'sem chave') +
+      ' | DeepSeek: ' + (dados.temDeepSeek ? 'chave salva' : 'sem chave');
     if (dados.modelo) refs.modelo.value = dados.modelo;
+    atualizarLinkChave(dados.provedor);
   } catch (erro) {
     refs.status.textContent = 'indisponível';
     mostrar((erro as Error).message, 'erro');
@@ -88,6 +112,7 @@ refs.salvar.addEventListener('click', async () => {
   try {
     await enviar<StatusChave>({
       type: 'SAVE_KEY',
+      provedor: refs.provider.value as Provedor,
       apiKey: refs.apiKey.value,
       masterPassword: refs.senha.value,
     });
@@ -109,7 +134,11 @@ refs.desbloquear.addEventListener('click', async () => {
   }
   comBotao(refs.desbloquear, true, 'Abrindo...');
   try {
-    await enviar<StatusChave>({ type: 'UNLOCK', masterPassword: refs.senha.value });
+    await enviar<StatusChave>({
+      type: 'UNLOCK',
+      provedor: refs.provider.value as Provedor,
+      masterPassword: refs.senha.value,
+    });
     refs.senha.value = '';
     mostrar('Chave desbloqueada.', 'ok');
     await atualizarStatus();
@@ -134,8 +163,8 @@ refs.bloquear.addEventListener('click', async () => {
 refs.testar.addEventListener('click', async () => {
   comBotao(refs.testar, true, 'Testando...');
   try {
-    const dados = await enviar<{ resposta: string }>({ type: 'TEST_KEY' });
-    mostrar('Conexão OK. A IA respondeu: ' + dados.resposta, 'ok');
+    const dados = await enviar<{ resposta: string; provedor: string; modelo: string }>({ type: 'TEST_KEY' });
+    mostrar('Conexão OK (' + dados.provedor + ', ' + dados.modelo + '). A IA respondeu: ' + dados.resposta, 'ok');
   } catch (erro) {
     mostrar((erro as Error).message, 'erro');
   } finally {
@@ -147,6 +176,17 @@ refs.modelo.addEventListener('change', async () => {
   try {
     await enviar<StatusChave>({ type: 'SET_SETTINGS', modelo: refs.modelo.value.trim() });
     mostrar('Modelo salvo.', 'ok');
+  } catch (erro) {
+    mostrar((erro as Error).message, 'erro');
+  }
+});
+
+refs.provider.addEventListener('change', async () => {
+  try {
+    const provedor = refs.provider.value as Provedor;
+    await enviar<StatusChave>({ type: 'SET_SETTINGS', provedor });
+    mostrar('Provedor alterado para ' + NOMES_PROVEDOR[provedor] + '.', 'ok');
+    await atualizarStatus();
   } catch (erro) {
     mostrar((erro as Error).message, 'erro');
   }

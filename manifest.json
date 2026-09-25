@@ -8,6 +8,7 @@
   "host_permissions": [
     "*://*.blogger.com/*",
     "https://generativelanguage.googleapis.com/*",
+    "https://api.deepseek.com/*",
     "*://*.googleusercontent.com/*",
     "*://*.blogspot.com/*"
   ],

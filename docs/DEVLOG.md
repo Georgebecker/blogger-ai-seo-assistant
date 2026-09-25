@@ -10,7 +10,7 @@ solução vive no código). Atualize este arquivo a cada decisão relevante.
 | Linguagem | TypeScript compilado para JavaScript | Tipagem estática evita que o agente de IA use APIs inexistentes e garante conformidade com o Manifest V3 |
 | Build | Vite + `@crxjs/vite-plugin` | Empacotamento otimizado; o plugin injeta os caminhos compilados no manifest do `dist/` |
 | Manifest | V3 | Obrigatório para novas extensões |
-| Modelo de IA | Google Gemini 2.0 Flash (padrão, trocável no popup) | Rápido, barato e com visão computacional nativa |
+| Modelo de IA | Google Gemini (padrão `gemini-3.8-flash`) ou DeepSeek (padrão `deepseek-flash`), escolhido no popup | Os dois entendem texto e imagens; modelo trocável no popup |
 | Armazenamento | `chrome.storage.local` + AES-GCM (PBKDF2) | Chave BYOK nunca em texto puro; `chrome.storage.session` guarda só a cópia desbloqueada |
 
 ## Problemas antecipados e soluções
@@ -96,6 +96,8 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 
 ## Linha do tempo
 
+- **25/09/2026** — Suporte a dois provedores de IA: Google Gemini ou DeepSeek (escolha no popup; chaves criptografadas separadas; chamadas no service worker).
+- **25/09/2026** — Modelo padrão do Google corrigido (`gemini-2.0-flash` aposentado pela API → `gemini-3.8-flash`), com migração automática de modelos antigos salvos.
 - **25/09/2026** — Explicação em linguagem simples criada em `docs/ENTENDA_O_PROJETO.md`.
 - **25/09/2026** — Prompt da fase de validação real criado em `docs/PROMPTS_AGENTE.md`.
 - **25/09/2026** — Seção "Para agentes de IA" adicionada (ancoragem para uso com DeepSeek).

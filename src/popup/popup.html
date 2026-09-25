@@ -12,8 +12,8 @@
     header p { margin: 2px 0 0; font-size: 11px; opacity: .85; }
     section { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; }
     label { display: block; font-weight: 600; margin: 8px 0 4px; color: #374151; }
-    input { width: 100%; padding: 7px 9px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; }
-    input:focus { outline: 2px solid #c7d2fe; border-color: #818cf8; }
+    input, select { width: 100%; padding: 7px 9px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; background: #fff; color: inherit; }
+    input:focus, select:focus { outline: 2px solid #c7d2fe; border-color: #818cf8; }
     .linha { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
     button { font: inherit; border: 1px solid #d1d5db; background: #fff; border-radius: 8px; padding: 7px 10px; cursor: pointer; font-weight: 600; color: #111827; }
     button:hover { background: #f3f4f6; }
@@ -37,9 +37,16 @@
   </header>
 
   <section>
-    <div class="status"><span>Estado da chave</span><b id="status">verificando...</b></div>
+    <label for="provider">Provedor de IA</label>
+    <select id="provider">
+      <option value="google">Google Gemini</option>
+      <option value="deepseek">DeepSeek</option>
+    </select>
 
-    <label for="apiKey">Chave da API Gemini</label>
+    <div class="status" style="margin-top:8px"><span>Situação</span><b id="status">verificando...</b></div>
+    <p class="dica" id="chaves">-</p>
+
+    <label for="apiKey">Chave da API (<span id="providerNome">Google</span>)</label>
     <div class="linha" style="margin-top:0">
       <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="AIza...">
       <button id="toggleKey" type="button">Mostrar</button>
@@ -60,15 +67,16 @@
   </section>
 
   <section>
-    <label for="model">Modelo do Gemini</label>
+    <label for="model">Modelo do provedor escolhido</label>
     <input id="model" list="modelList" spellcheck="false" autocomplete="off">
     <datalist id="modelList">
-      <option value="gemini-2.0-flash"></option>
-      <option value="gemini-2.0-flash-lite"></option>
+      <option value="gemini-3.8-flash"></option>
+      <option value="gemini-3.5-flash-lite"></option>
       <option value="gemini-2.5-flash"></option>
-      <option value="gemini-2.5-flash-lite"></option>
+      <option value="deepseek-flash"></option>
+      <option value="deepseek-v4-pro"></option>
     </datalist>
-    <p class="dica">O padrão é o gemini-2.0-flash (rápido e barato). Você pode digitar outro nome.</p>
+    <p class="dica">Padrões: gemini-3.8-flash (Google) ou deepseek-flash (DeepSeek). Você pode digitar outro nome.</p>
   </section>
 
   <section>

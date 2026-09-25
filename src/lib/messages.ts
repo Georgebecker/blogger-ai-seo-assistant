@@ -5,8 +5,12 @@ export interface ContextoImagem {
   palavraChave: string;
 }
 
+export type Provedor = 'google' | 'deepseek';
+
 export interface StatusChave {
-  temChave: boolean;
+  provedor: Provedor;
+  temGoogle: boolean;
+  temDeepSeek: boolean;
   desbloqueada: boolean;
   modelo: string;
 }
@@ -39,11 +43,11 @@ export interface ResultadoLinks {
 
 export type MensagemParaFundo =
   | { type: 'GET_STATUS' }
-  | { type: 'SAVE_KEY'; apiKey: string; masterPassword: string }
-  | { type: 'UNLOCK'; masterPassword: string }
+  | { type: 'SAVE_KEY'; provedor: Provedor; apiKey: string; masterPassword: string }
+  | { type: 'UNLOCK'; provedor: Provedor; masterPassword: string }
   | { type: 'LOCK' }
   | { type: 'TEST_KEY' }
-  | { type: 'SET_SETTINGS'; modelo: string }
+  | { type: 'SET_SETTINGS'; provedor?: Provedor; modelo?: string }
   | { type: 'AI_OPTIMIZE_TEXT'; text: string; title: string; keyword: string }
   | { type: 'AI_IMAGE_ALT'; src: string; contexto: ContextoImagem }
   | { type: 'CHECK_LINKS'; urls: string[] };

@@ -36,11 +36,11 @@ preenchido? As fotos têm descrição? Os links funcionam? Tudo numa listinha co
 
 ## A história da chave
 
-Para pensar, o assistente precisa de acesso a uma inteligência artificial do Google, que é
-paga por uso — como uma conta de luz. Esse acesso vem na forma de uma "chave" (um código
-pessoal):
+Para pensar, o assistente precisa de acesso a uma inteligência artificial (Google Gemini ou
+DeepSeek — você escolhe no popup), que é paga por uso — como uma conta de luz. Esse acesso
+vem na forma de uma "chave" (um código pessoal):
 
-- A chave é **sua** (você cria no site do Google).
+- A chave é **sua** (você cria no site do provedor escolhido).
 - Ela fica **trancada num cofre** dentro do navegador, protegida por uma senha que só você sabe.
 - Na hora de usar, o cofre abre por um instante, a chave é usada e tudo se tranca de novo.
 - A página do Blogger **nunca vê a chave** — é como pagar uma compra sem entregar o cartão na

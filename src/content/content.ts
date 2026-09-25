@@ -1503,7 +1503,8 @@ function alternarPainel(forcar?: boolean): void {
 async function atualizarStatusChave(): Promise<void> {
   try {
     const dados = await enviarParaFundo<StatusChave>({ type: 'GET_STATUS' });
-    if (!dados.temChave) {
+    const temChave = dados.provedor === 'deepseek' ? dados.temDeepSeek : dados.temGoogle;
+    if (!temChave) {
       refs.pill.textContent = 'sem chave';
       refs.pill.className = 'bai-pill bai-falha';
     } else if (!dados.desbloqueada) {

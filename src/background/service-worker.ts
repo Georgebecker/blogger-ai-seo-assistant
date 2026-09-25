@@ -1,14 +1,16 @@
 // service-worker.ts — centro do assistente (Manifest V3).
-// Guarda a chave (criptografada), fala com a API do Gemini e atende content script + popup.
+// Guarda as chaves (criptografadas), fala com as APIs de IA (Google Gemini ou DeepSeek)
+// e atende content script + popup.
 // Decisões do DevLog aplicadas aqui:
 // - o service worker "dorme"; todo estado crítico vai para chrome.storage.local na hora;
-// - as chamadas externas (Gemini) ficam centralizadas aqui por causa do CORS;
+// - as chamadas externas ficam centralizadas aqui por causa do CORS;
 // - o listener devolve `true` para manter o canal aberto até a resposta assíncrona;
 // - a chave nunca é registrada em log nem enviada ao content script.
 
 import { encryptKey, decryptKey, type PacoteChave } from '../lib/crypto-utils';
 import type {
   MensagemParaFundo,
+  Provedor,
   ResultadoLink,
   ResultadoLinks,
   StatusChave,
@@ -16,14 +18,27 @@ import type {
   SugestaoTexto,
 } from '../lib/messages';
 
-const ARMAZEM_CHAVE = 'bai.encryptedKey';
-const SESSAO_CHAVE = 'bai.sessionApiKey';
 const ARMAZEM_AJUSTES = 'bai.settings';
+const SESSAO_CHAVE = 'bai.sessionKey';
 
-const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const MODELO_PADRAO = 'gemini-2.0-flash';
+const ENDPOINT_GOOGLE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const ENDPOINT_DEEPSEEK = 'https://api.deepseek.com/chat/completions';
+const MODELO_PADRAO_GOOGLE = 'gemini-3.8-flash';
+const MODELO_PADRAO_DEEPSEEK = 'deepseek-flash';
 const LIMITE_TEXTO = 15000;
 const MAX_LINKS = 20;
+
+const NOMES_PROVEDOR: Record<Provedor, string> = { google: 'Google', deepseek: 'DeepSeek' };
+
+// Modelos aposentados que podem ter ficado salvos de versões anteriores.
+const MODELOS_APOSENTADOS: Record<string, string> = {
+  'gemini-2.0-flash': MODELO_PADRAO_GOOGLE,
+  'gemini-2.0-flash-lite': 'gemini-3.5-flash-lite',
+};
+
+function armazemChave(provedor: Provedor): string {
+  return 'bai.encryptedKey.' + provedor;
+}
 
 const ESQUEMA_TEXTO = {
   type: 'OBJECT',
@@ -68,20 +83,21 @@ function textoDoErro(erro: unknown): string {
 }
 
 async function tratarMensagem(mensagem: MensagemParaFundo): Promise<unknown> {
+  await garantirMigracao();
   switch (mensagem.type) {
     case 'GET_STATUS':
       return statusAtual();
     case 'SAVE_KEY':
-      return salvarChave(mensagem.apiKey, mensagem.masterPassword);
+      return salvarChave(mensagem);
     case 'UNLOCK':
-      return desbloquear(mensagem.masterPassword);
+      return desbloquear(mensagem);
     case 'LOCK':
       await bloquear();
       return statusAtual();
     case 'TEST_KEY':
       return testarChave();
     case 'SET_SETTINGS':
-      return salvarAjustes(mensagem.modelo);
+      return salvarAjustes({ provedor: mensagem.provedor, modelo: mensagem.modelo });
     case 'AI_OPTIMIZE_TEXT':
       return otimizarTexto(mensagem);
     case 'AI_IMAGE_ALT':
@@ -97,36 +113,131 @@ async function tratarMensagem(mensagem: MensagemParaFundo): Promise<unknown> {
 // Chave de API (BYOK)
 // ---------------------------------------------------------------------------
 
-async function statusAtual(): Promise<StatusChave> {
-  const local = (await chrome.storage.local.get([ARMAZEM_CHAVE, ARMAZEM_AJUSTES])) as Record<string, unknown>;
-  const sessao = (await chrome.storage.session.get(SESSAO_CHAVE)) as Record<string, unknown>;
-  const ajustes = (local[ARMAZEM_AJUSTES] || {}) as { modelo?: string };
+interface AjustesIA {
+  provedor: Provedor;
+  modelos: Record<Provedor, string>;
+}
+
+interface SessaoIA {
+  provedor: Provedor;
+  apiKey: string;
+}
+
+function normalizarProvedor(valor: unknown): Provedor {
+  return valor === 'deepseek' ? 'deepseek' : 'google';
+}
+
+function normalizarModelo(nome: string, padrao: string): string {
+  const modelo = String(nome || '').trim();
+  if (!modelo) return padrao;
+  return MODELOS_APOSENTADOS[modelo] || modelo;
+}
+
+async function obterAjustes(): Promise<AjustesIA> {
+  const local = (await chrome.storage.local.get(ARMAZEM_AJUSTES)) as Record<string, unknown>;
+  const bruto = (local[ARMAZEM_AJUSTES] || {}) as Record<string, unknown>;
+  const modelos = (bruto.modelos || {}) as Record<string, unknown>;
+  const modeloAntigo = typeof bruto.modelo === 'string' ? bruto.modelo : '';
   return {
-    temChave: Boolean(local[ARMAZEM_CHAVE]),
-    desbloqueada: Boolean(sessao[SESSAO_CHAVE]),
-    modelo: ajustes.modelo || MODELO_PADRAO,
+    provedor: normalizarProvedor(bruto.provedor),
+    modelos: {
+      google: normalizarModelo(String(modelos.google || modeloAntigo || ''), MODELO_PADRAO_GOOGLE),
+      deepseek: normalizarModelo(String(modelos.deepseek || ''), MODELO_PADRAO_DEEPSEEK),
+    },
   };
 }
 
-async function salvarChave(apiKey: string, senhaMestra: string): Promise<StatusChave> {
-  const chave = String(apiKey || '').trim();
-  const senha = String(senhaMestra || '');
-  if (!chave) throw new Error('Informe a chave da API.');
-  if (chave.length < 20) throw new Error('A chave da API parece curta demais. Confira no Google AI Studio.');
-  if (senha.length < 8) throw new Error('A senha mestra precisa ter pelo menos 8 caracteres.');
-
-  const pacote = await encryptKey(chave, senha);
-  await chrome.storage.local.set({ [ARMAZEM_CHAVE]: pacote });
-  await chrome.storage.session.set({ [SESSAO_CHAVE]: chave });
+async function salvarAjustes(parcial: { provedor?: Provedor; modelo?: string }): Promise<StatusChave> {
+  const atuais = await obterAjustes();
+  const proximo: AjustesIA = {
+    provedor: parcial.provedor ? normalizarProvedor(parcial.provedor) : atuais.provedor,
+    modelos: { ...atuais.modelos },
+  };
+  if (parcial.modelo !== undefined) {
+    const modelo = String(parcial.modelo || '').trim();
+    if (!modelo) throw new Error('Informe o nome do modelo.');
+    if (modelo.length > 80) throw new Error('O nome do modelo é longo demais.');
+    proximo.modelos[proximo.provedor] = modelo;
+  }
+  await chrome.storage.local.set({ [ARMAZEM_AJUSTES]: proximo });
   return statusAtual();
 }
 
-async function desbloquear(senhaMestra: string): Promise<StatusChave> {
-  const senha = String(senhaMestra || '');
+async function definirProvedorAtivo(provedor: Provedor): Promise<void> {
+  const atuais = await obterAjustes();
+  await chrome.storage.local.set({
+    [ARMAZEM_AJUSTES]: { provedor, modelos: { ...atuais.modelos } },
+  });
+}
+
+async function obterSessao(): Promise<SessaoIA | null> {
+  const dados = (await chrome.storage.session.get(SESSAO_CHAVE)) as Record<string, unknown>;
+  const bruto = dados[SESSAO_CHAVE] as { provedor?: unknown; apiKey?: unknown } | undefined;
+  if (!bruto || typeof bruto.apiKey !== 'string' || !bruto.apiKey) return null;
+  return { provedor: normalizarProvedor(bruto.provedor), apiKey: bruto.apiKey };
+}
+
+async function gravarSessao(provedor: Provedor, apiKey: string): Promise<void> {
+  await chrome.storage.session.set({ [SESSAO_CHAVE]: { provedor, apiKey } });
+}
+
+let migracaoFeita = false;
+
+async function garantirMigracao(): Promise<void> {
+  if (migracaoFeita) return;
+  migracaoFeita = true;
+  try {
+    // Formato antigo: uma única chave, sempre do Google.
+    const local = (await chrome.storage.local.get(['bai.encryptedKey', armazemChave('google')])) as Record<string, unknown>;
+    if (local['bai.encryptedKey'] && !local[armazemChave('google')]) {
+      await chrome.storage.local.set({ [armazemChave('google')]: local['bai.encryptedKey'] });
+      await chrome.storage.local.remove('bai.encryptedKey');
+    }
+  } catch {
+    // segue sem migração
+  }
+}
+
+async function statusAtual(): Promise<StatusChave> {
+  const ajustes = await obterAjustes();
+  const local = (await chrome.storage.local.get([
+    armazemChave('google'),
+    armazemChave('deepseek'),
+  ])) as Record<string, unknown>;
+  const sessao = await obterSessao();
+  return {
+    provedor: ajustes.provedor,
+    temGoogle: Boolean(local[armazemChave('google')]),
+    temDeepSeek: Boolean(local[armazemChave('deepseek')]),
+    desbloqueada: Boolean(sessao && sessao.provedor === ajustes.provedor),
+    modelo: ajustes.modelos[ajustes.provedor],
+  };
+}
+
+async function salvarChave(mensagem: { provedor: Provedor; apiKey: string; masterPassword: string }): Promise<StatusChave> {
+  const provedor = normalizarProvedor(mensagem.provedor);
+  const chave = String(mensagem.apiKey || '').trim();
+  const senha = String(mensagem.masterPassword || '');
+  if (!chave) throw new Error('Informe a chave da API.');
+  if (chave.length < 20) throw new Error('A chave da API parece curta demais. Confira no painel do provedor.');
+  if (senha.length < 8) throw new Error('A senha mestra precisa ter pelo menos 8 caracteres.');
+
+  const pacote = await encryptKey(chave, senha);
+  await chrome.storage.local.set({ [armazemChave(provedor)]: pacote });
+  await definirProvedorAtivo(provedor);
+  await gravarSessao(provedor, chave);
+  return statusAtual();
+}
+
+async function desbloquear(mensagem: { provedor: Provedor; masterPassword: string }): Promise<StatusChave> {
+  const provedor = normalizarProvedor(mensagem.provedor);
+  const senha = String(mensagem.masterPassword || '');
   if (!senha) throw new Error('Informe a senha mestra.');
-  const local = (await chrome.storage.local.get(ARMAZEM_CHAVE)) as Record<string, unknown>;
-  const pacote = local[ARMAZEM_CHAVE] as PacoteChave | undefined;
-  if (!pacote) throw new Error('Nenhuma chave salva ainda. Salve a chave primeiro.');
+  const local = (await chrome.storage.local.get(armazemChave(provedor))) as Record<string, unknown>;
+  const pacote = local[armazemChave(provedor)] as PacoteChave | undefined;
+  if (!pacote) {
+    throw new Error('Nenhuma chave do ' + NOMES_PROVEDOR[provedor] + ' salva ainda. Salve a chave primeiro.');
+  }
 
   let chave: string;
   try {
@@ -134,7 +245,8 @@ async function desbloquear(senhaMestra: string): Promise<StatusChave> {
   } catch {
     throw new Error('Senha mestra incorreta.');
   }
-  await chrome.storage.session.set({ [SESSAO_CHAVE]: chave });
+  await definirProvedorAtivo(provedor);
+  await gravarSessao(provedor, chave);
   return statusAtual();
 }
 
@@ -142,37 +254,38 @@ async function bloquear(): Promise<void> {
   await chrome.storage.session.remove(SESSAO_CHAVE);
 }
 
-async function obterChaveAtiva(): Promise<string> {
-  const sessao = (await chrome.storage.session.get(SESSAO_CHAVE)) as Record<string, unknown>;
-  const chave = sessao[SESSAO_CHAVE];
-  if (typeof chave !== 'string' || !chave) {
-    throw new Error('A chave está bloqueada. Abra o popup da extensão e desbloqueie com a senha mestra.');
+async function obterChaveAtiva(): Promise<SessaoIA> {
+  const ajustes = await obterAjustes();
+  const sessao = await obterSessao();
+  if (!sessao || sessao.provedor !== ajustes.provedor) {
+    throw new Error(
+      'A chave do ' + NOMES_PROVEDOR[ajustes.provedor] +
+        ' está bloqueada. Abra o popup da extensão e desbloqueie com a senha mestra (ou salve a chave).',
+    );
   }
-  return chave;
+  return sessao;
 }
 
-async function salvarAjustes(modelo: string): Promise<StatusChave> {
-  const nome = String(modelo || '').trim();
-  if (!nome) throw new Error('Informe o nome do modelo do Gemini.');
-  if (nome.length > 80) throw new Error('O nome do modelo é longo demais.');
-  await chrome.storage.local.set({ [ARMAZEM_AJUSTES]: { modelo: nome } });
-  return statusAtual();
-}
-
-async function testarChave(): Promise<{ resposta: string }> {
-  const resposta = await chamarGemini({
+async function testarChave(): Promise<{ resposta: string; provedor: string; modelo: string }> {
+  const ativa = await obterChaveAtiva();
+  const ajustes = await obterAjustes();
+  const resposta = await chamarIA({
     prompt: 'Responda apenas com a palavra: ok',
     temperatura: 0,
     maxTokens: 8,
   });
-  return { resposta: limitarTexto(resposta, 40) };
+  return {
+    resposta: limitarTexto(resposta, 40),
+    provedor: NOMES_PROVEDOR[ativa.provedor],
+    modelo: ajustes.modelos[ativa.provedor],
+  };
 }
 
 // ---------------------------------------------------------------------------
-// API do Gemini
+// APIs de IA (Google Gemini e DeepSeek)
 // ---------------------------------------------------------------------------
 
-interface OpcoesGemini {
+interface OpcoesIA {
   prompt: string;
   imagemBase64?: string | null;
   tipoImagem?: string;
@@ -187,11 +300,22 @@ interface RespostaGemini {
   error?: { message?: string };
 }
 
-async function chamarGemini(opcoes: OpcoesGemini): Promise<string> {
-  const apiKey = await obterChaveAtiva();
-  const ajustes = (await obterAjustes()) as { modelo?: string };
-  const modelo = ajustes.modelo || MODELO_PADRAO;
+interface RespostaDeepSeek {
+  choices?: Array<{ message?: { content?: string } }>;
+  error?: { message?: string };
+}
 
+async function chamarIA(opcoes: OpcoesIA): Promise<string> {
+  const ativa = await obterChaveAtiva();
+  const ajustes = await obterAjustes();
+  const modelo = ajustes.modelos[ativa.provedor];
+  if (ativa.provedor === 'deepseek') {
+    return chamarDeepSeek(ativa.apiKey, modelo, opcoes);
+  }
+  return chamarGoogle(ativa.apiKey, modelo, opcoes);
+}
+
+async function chamarGoogle(apiKey: string, modelo: string, opcoes: OpcoesIA): Promise<string> {
   const partes: Array<Record<string, unknown>> = [{ text: opcoes.prompt }];
   if (opcoes.imagemBase64) {
     partes.push({
@@ -216,7 +340,7 @@ async function chamarGemini(opcoes: OpcoesGemini): Promise<string> {
   const relogio = setTimeout(() => controlador.abort(), 60000);
   let resposta: Response;
   try {
-    resposta = await fetch(`${ENDPOINT}/${encodeURIComponent(modelo)}:generateContent`, {
+    resposta = await fetch(`${ENDPOINT_GOOGLE}/${encodeURIComponent(modelo)}:generateContent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -229,27 +353,82 @@ async function chamarGemini(opcoes: OpcoesGemini): Promise<string> {
     if (erro && erro.name === 'AbortError') {
       throw new Error('A IA demorou demais para responder. Tente novamente.');
     }
-    throw new Error('Não consegui falar com a API do Gemini. Verifique a conexão e tente de novo.');
+    throw new Error('Não consegui falar com a API do Google. Verifique a conexão e tente de novo.');
   } finally {
     clearTimeout(relogio);
   }
 
   const dados = (await resposta.json().catch(() => null)) as RespostaGemini | null;
-  if (!resposta.ok) throw new Error(descreverErroApi(resposta.status, dados));
+  if (!resposta.ok) {
+    throw new Error(descreverErroApi('Google', resposta.status, dados?.error?.message ?? undefined));
+  }
 
   const texto = extrairTexto(dados);
   if (!texto) throw new Error('A IA não retornou texto. Tente novamente.');
   return texto;
 }
 
-function descreverErroApi(status: number, dados: RespostaGemini | null): string {
-  const detalhe = dados && dados.error && dados.error.message ? ` (${dados.error.message})` : '';
+async function chamarDeepSeek(apiKey: string, modelo: string, opcoes: OpcoesIA): Promise<string> {
+  const conteudo: Array<Record<string, unknown>> = [{ type: 'text', text: opcoes.prompt }];
+  if (opcoes.imagemBase64) {
+    const tipo = opcoes.tipoImagem || 'image/jpeg';
+    conteudo.push({
+      type: 'image_url',
+      image_url: { url: `data:${tipo};base64,${opcoes.imagemBase64}` },
+    });
+  }
+
+  const corpo: Record<string, unknown> = {
+    model: modelo,
+    messages: [{ role: 'user', content: conteudo }],
+    temperature: opcoes.temperatura ?? 0.2,
+    max_tokens: opcoes.maxTokens ?? 8192,
+  };
+
+  const controlador = new AbortController();
+  const relogio = setTimeout(() => controlador.abort(), 60000);
+  let resposta: Response;
+  try {
+    resposta = await fetch(ENDPOINT_DEEPSEEK, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + apiKey,
+      },
+      body: JSON.stringify(corpo),
+      signal: controlador.signal,
+    });
+  } catch (erro) {
+    if (erro && erro.name === 'AbortError') {
+      throw new Error('A IA demorou demais para responder. Tente novamente.');
+    }
+    throw new Error('Não consegui falar com a API do DeepSeek. Verifique a conexão e tente de novo.');
+  } finally {
+    clearTimeout(relogio);
+  }
+
+  const dados = (await resposta.json().catch(() => null)) as RespostaDeepSeek | null;
+  if (!resposta.ok) {
+    throw new Error(descreverErroApi('DeepSeek', resposta.status, dados?.error?.message ?? undefined));
+  }
+
+  const candidato = dados && dados.choices && dados.choices[0];
+  const texto = candidato && candidato.message && candidato.message.content;
+  const limpo = typeof texto === 'string' ? texto.trim() : '';
+  if (!limpo) throw new Error('A IA não retornou texto. Tente novamente.');
+  return limpo;
+}
+
+function descreverErroApi(provedorNome: string, status: number, detalheApi?: string): string {
+  const detalhe = detalheApi ? ` (${detalheApi})` : '';
   if (status === 400) return 'A chave da API parece inválida ou a solicitação foi recusada.' + detalhe;
   if (status === 401 || status === 403) return 'A chave da API não tem permissão para usar este modelo.' + detalhe;
-  if (status === 404) return 'O modelo configurado não foi encontrado.' + detalhe;
+  if (status === 404) {
+    return 'O modelo configurado não foi encontrado. Confira o nome do modelo no popup da extensão.' + detalhe;
+  }
   if (status === 429) return 'Limite de uso da API atingido. Aguarde um instante e tente novamente.' + detalhe;
-  if (status >= 500) return 'O serviço do Gemini está instável agora. Tente novamente em instantes.' + detalhe;
-  return `A API do Gemini respondeu com erro ${status}.` + detalhe;
+  if (status >= 500) return 'O serviço do ' + provedorNome + ' está instável agora. Tente novamente em instantes.' + detalhe;
+  return 'A API do ' + provedorNome + ' respondeu com erro ' + status + '.' + detalhe;
 }
 
 function extrairTexto(dados: RespostaGemini | null): string {
@@ -261,11 +440,6 @@ function extrairTexto(dados: RespostaGemini | null): string {
     return '';
   }
   return partes.map((parte) => parte.text || '').join('').trim();
-}
-
-async function obterAjustes(): Promise<Record<string, unknown>> {
-  const local = (await chrome.storage.local.get(ARMAZEM_AJUSTES)) as Record<string, unknown>;
-  return (local[ARMAZEM_AJUSTES] || {}) as Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +454,7 @@ async function otimizarTexto(mensagem: { text: string; title: string; keyword: s
   if (texto.length < 40) throw new Error('O texto do post está muito curto para analisar.');
   if (!palavraChave) throw new Error('Informe a palavra-chave principal do post.');
 
-  const bruto = await chamarGemini({
+  const bruto = await chamarIA({
     prompt: montarPromptTexto({ texto, titulo, palavraChave }),
     esquema: ESQUEMA_TEXTO,
     temperatura: 0.2,
@@ -343,7 +517,7 @@ async function gerarAlt(mensagem: {
   }
 
   const { base64, tipo } = await baixarImagem(src);
-  const bruto = await chamarGemini({
+  const bruto = await chamarIA({
     prompt: montarPromptImagem(mensagem.contexto),
     imagemBase64: base64,
     tipoImagem: tipo,
@@ -516,7 +690,12 @@ chrome.runtime.onInstalled.addListener(() => {
     .get(ARMAZEM_AJUSTES)
     .then((atual: Record<string, unknown>) => {
       if (!atual[ARMAZEM_AJUSTES]) {
-        chrome.storage.local.set({ [ARMAZEM_AJUSTES]: { modelo: MODELO_PADRAO } });
+        chrome.storage.local.set({
+          [ARMAZEM_AJUSTES]: {
+            provedor: 'google',
+            modelos: { google: MODELO_PADRAO_GOOGLE, deepseek: MODELO_PADRAO_DEEPSEEK },
+          },
+        });
       }
     })
     .catch(() => {});

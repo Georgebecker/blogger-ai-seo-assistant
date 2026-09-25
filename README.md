@@ -6,8 +6,9 @@ Extensão do Chrome (Manifest V3) que se integra ao editor do Blogger para:
 - **Gerar ALT e legendas** para imagens sem descrição, usando IA com visão computacional.
 - **Auditar o post** em tempo real: checklist de SEO técnico, links (locais e externos) e aviso de AMP.
 
-A chave da API Gemini é sua (BYOK): fica guardada **criptografada** (AES-GCM + PBKDF2) no seu
-navegador e só é usada no service worker, no momento da chamada — nunca é exposta na página.
+As chaves de API são suas (BYOK): **Google Gemini** ou **DeepSeek** — você escolhe no popup.
+A chave fica guardada **criptografada** (AES-GCM + PBKDF2) no seu navegador e só é usada no
+service worker, no momento da chamada — nunca é exposta na página.
 Por padrão tudo acontece em uma única janela, sem servidor próprio no meio.
 
 Explicação em linguagem simples (para qualquer pessoa): [`docs/ENTENDA_O_PROJETO.md`](docs/ENTENDA_O_PROJETO.md).
@@ -21,7 +22,7 @@ Explicação em linguagem simples (para qualquer pessoa): [`docs/ENTENDA_O_PROJE
 | Linguagem | TypeScript (compilado para JavaScript) | Tipagem estática evita API inexistente e garante conformidade com o Manifest V3 |
 | Build | Vite + `@crxjs/vite-plugin` | Empacotamento otimizado e caminhos do manifest resolvidos automaticamente |
 | Manifest | V3 | Obrigatório para novas extensões |
-| Modelo de IA | Google Gemini 2.0 Flash (visão nativa) | Rápido e barato; o modelo pode ser trocado no popup |
+| Modelo de IA | Google Gemini ou DeepSeek (você escolhe no popup) | Os dois entendem texto e imagens; padrões: gemini-3.8-flash e deepseek-flash |
 | Armazenamento | `chrome.storage.local` + criptografia AES-GCM | A chave nunca fica em texto puro no disco |
 
 ## Requisitos
@@ -55,9 +56,11 @@ Outros comandos:
 
 ## Como configurar a chave
 
-1. Crie uma chave de API no Google AI Studio: <https://aistudio.google.com/app/apikey>.
+1. Escolha o provedor no popup e crie a chave no painel dele:
+   - Google Gemini: <https://aistudio.google.com/app/apikey> (tem camada sem custo);
+   - DeepSeek: <https://platform.deepseek.com/api_keys>.
 2. Clique no ícone da extensão e informe:
-   - a **chave da API**;
+   - a **chave da API** do provedor escolhido;
    - uma **senha mestra** (criada por você; é ela que criptografa a chave).
 3. Clique em **Salvar chave** (e, se quiser conferir, em **Testar conexão**).
 
@@ -93,7 +96,8 @@ estiver aberto, a chave desbloqueada fica apenas na memória da sessão (`chrome
 | `storage` | Guardar a chave criptografada, a sessão de desbloqueio e as preferências |
 | `activeTab`, `scripting` | Recursos do popup e injeção sob demanda |
 | `*://*.blogger.com/*` | Ler e ajustar o editor do Blogger |
-| `https://generativelanguage.googleapis.com/*` | Chamar a API do Gemini (feito no service worker) |
+| `https://generativelanguage.googleapis.com/*` | Chamar a API do Google Gemini (feito no service worker) |
+| `https://api.deepseek.com/*` | Chamar a API do DeepSeek (só se você escolher esse provedor) |
 | `*://*.googleusercontent.com/*`, `*://*.blogspot.com/*` | Baixar as imagens do post para a IA descrevê-las |
 | `*://*/*` (opcional, pedida sob demanda) | Verificar links externos; você autoriza no popup |
 
