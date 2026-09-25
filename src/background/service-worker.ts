@@ -557,11 +557,13 @@ async function chamarDeepSeek(apiKey: string, modelo: string, opcoes: OpcoesIA):
 class ErroApi extends Error {
   readonly transitorio: boolean;
   readonly modeloIndisponivel: boolean;
+  readonly semCota: boolean;
 
-  constructor(mensagem: string, transitorio: boolean, modeloIndisponivel = false) {
+  constructor(mensagem: string, transitorio: boolean, modeloIndisponivel = false, semCota = false) {
     super(mensagem);
     this.transitorio = transitorio;
     this.modeloIndisponivel = modeloIndisponivel;
+    this.semCota = semCota;
   }
 }
 
@@ -581,6 +583,18 @@ function erroDaApi(provedorNome: string, status: number, detalheApi?: string): E
     );
   }
   if (status === 429) {
+    const textoDetalhe = detalheApi || '';
+    const semCota = /limit:\s*0|free tier|upgrade your tier|not available for free/i.test(textoDetalhe);
+    if (semCota) {
+      return new ErroApi(
+        'Sua conta do Google está no nível gratuito e este modelo está fora da cota gratuita (0 por dia). ' +
+          'Para usar, ative o faturamento da conta no Google AI Studio.' +
+          detalhe,
+        false,
+        false,
+        true,
+      );
+    }
     return new ErroApi('Limite de uso da API atingido. Aguarde um instante e tente novamente.' + detalhe, true);
   }
   if (status >= 500) {
@@ -1030,9 +1044,18 @@ async function gerarImagem(mensagem: { prompt: string; proporcao: string; alt: s
       return { imagem, modelo, alt: limitarTexto(mensagem.alt, 125) };
     } catch (erro) {
       ultimoErro = erro;
-      if (erro instanceof ErroApi && erro.modeloIndisponivel) continue;
+      // Tenta o próximo modelo quando este não existe ou não tem cota na conta.
+      if (erro instanceof ErroApi && (erro.modeloIndisponivel || erro.semCota)) continue;
       throw erro;
     }
+  }
+  if (ultimoErro instanceof ErroApi && ultimoErro.semCota) {
+    throw new ErroApi(
+      'A geração de imagem não está liberada na sua conta do Google: no nível gratuito a cota é de 0 imagens por dia, e nenhum dos modelos de imagem tem cota gratuita. ' +
+        'Para gerar por aqui, ative o faturamento da conta no Google AI Studio. ' +
+        'Enquanto isso: cole o comando em um serviço de imagens (por exemplo, o Gemini no navegador), salve a imagem e use "Escolher do computador"; ou use "Usar imagem padrão".',
+      false,
+    );
   }
   throw ultimoErro instanceof Error ? ultimoErro : new Error('Não consegui gerar a imagem agora. Tente novamente.');
 }

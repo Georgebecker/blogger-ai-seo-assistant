@@ -390,6 +390,16 @@ function localizarEditor(): HTMLElement | null {
   return null;
 }
 
+// Procura o editor ignorando a espera de 800 ms (usado em ações diretas do usuário).
+function localizarEditorForcado(): HTMLElement | null {
+  if (!estado.editorManual) {
+    estado.editor = null;
+    estado.janela = null;
+    buscaFalhouEm = 0;
+  }
+  return localizarEditor();
+}
+
 function lerTextoDoEditor(editor: HTMLElement): string {
   const bruto = editor.innerText || '';
   return bruto
@@ -812,13 +822,19 @@ function coletarImagens(editor: HTMLElement): ColetaImagens {
   return { todas, semAlt };
 }
 
-function escanearImagens(): void {
-  const editor = localizarEditor();
+function escanearImagens(tentativa = 0): void {
+  const editor = localizarEditorForcado();
   if (!editor) {
+    if (tentativa < 2) {
+      definirStatus(refs.statusImagens, 'Procurando a área de escrita do post...', 'info');
+      window.setTimeout(() => escanearImagens(tentativa + 1), 1200);
+      return;
+    }
     definirStatus(
       refs.statusImagens,
-      'Não encontrei o editor. Abra a página de edição do post ou use "Apontar manualmente" no rodapé do painel.',
-      'erro',
+      'Não achei a área de escrita do post nesta página. Se isso já funcionou antes, clique em "Apontar manualmente" no rodapé do painel e clique na área onde você escreve. ' +
+        'A caixa "Imagem nova para o post" funciona mesmo assim: você pode gerar ou escolher a imagem agora.',
+      'aviso',
     );
     return;
   }
@@ -1046,13 +1062,15 @@ function proporcaoEscolhida(): string {
 }
 
 async function montarPromptDaImagem(): Promise<void> {
-  const editor = localizarEditor();
+  const editor = localizarEditorForcado();
   const texto = editor ? lerTextoDoEditor(editor) : '';
   const titulo = lerTitulo();
   if (!titulo || texto.trim().length < 200) {
     definirStatus(
       refs.statusImagem,
-      'Para montar o comando a partir do post, o post precisa ter título e pelo menos um parágrafo escrito. Sem isso, escreva você mesmo o comando da imagem.',
+      editor
+        ? 'Para montar o comando a partir do post, o post precisa ter título e pelo menos um parágrafo escrito. Escreva um pouco mais ou escreva você mesmo o comando da imagem.'
+        : 'Não achei a área de escrita do post agora, então não consigo ler o texto. Escreva você mesmo o comando da imagem - ou clique em "Apontar manualmente" no rodapé para me mostrar onde você escreve.',
       'aviso',
     );
     return;
@@ -1099,7 +1117,7 @@ async function gerarImagemIA(): Promise<void> {
   ocupar(refs.botaoGerarImagem, true, 'Gerando imagem...');
   definirStatus(
     refs.statusImagem,
-    'Gerando a imagem (pode levar até um minuto; cada imagem gerada é cobrada pelo Google).',
+    'Gerando a imagem (pode levar até um minuto). O serviço é pago: contas do Google no nível gratuito não têm cota de imagem.',
     'info',
   );
   try {
@@ -1280,9 +1298,13 @@ async function sugerirAltDaImagem(): Promise<void> {
 function inserirImagemNoPost(): void {
   const criada = estado.imagemCriada;
   if (!criada || !criada.dataUrl) return;
-  const editor = localizarEditor();
+  const editor = localizarEditorForcado();
   if (!editor) {
-    definirStatus(refs.statusImagem, 'Não encontrei o editor. Use "Apontar manualmente" no rodapé do painel.', 'erro');
+    definirStatus(
+      refs.statusImagem,
+      'Não achei a área de escrita do post para inserir. A imagem continua guardada aqui: use "Baixar imagem" para salvá-la e envie pelo botão de imagem do Blogger, ou clique em "Apontar manualmente" no rodapé e tente de novo.',
+      'aviso',
+    );
     return;
   }
   const alt = (criada.alt || '').trim();
@@ -2387,9 +2409,9 @@ function montarCaixaImagemNova(): HTMLElement {
     criar('div', {
       className: 'bai-dica',
       texto:
-        'A imagem é criada pelo serviço de imagem do Google, a partir do comando que você escreveu (o Google cobra por imagem gerada). ' +
-        'Se preferir, escreva o comando, gere a imagem em outro lugar e use "Escolher do computador". ' +
-        'Não deu certo? Use "Usar imagem padrão" para deixar um espaço reservado e troque depois.',
+        'A imagem é criada pelo serviço de imagem do Google, a partir do comando que você escreveu. Esse serviço é pago: contas do Google no nível gratuito têm cota de 0 imagens por dia e a geração não funciona. ' +
+        'Alternativas que funcionam sempre: cole o comando em um serviço de imagens (por exemplo, o Gemini no navegador), salve a imagem e use "Escolher do computador"; ou use "Usar imagem padrão" para deixar um espaço reservado no post. ' +
+        'Para gerar direto por aqui, ative o faturamento da conta no Google AI Studio.',
     }),
   );
 

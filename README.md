@@ -84,7 +84,10 @@ estiver aberto, a chave desbloqueada fica apenas na memória da sessão (`chrome
      dentro das regras de SEO; revise a "Conformidade SEO" e insira no post.
    - **Imagens** — crie uma imagem nova (montada a partir do post, com comando seu, escolhida do
      computador ou padrão), confira a descrição e insira no post; e escaneie as imagens
-     existentes sem `alt` para gerar e aplicar sugestões (alt + legenda).
+     existentes sem `alt` para gerar e aplicar sugestões (alt + legenda). Observação: a geração
+     com IA usa os modelos de imagem do Google e exige conta com faturamento ativado (o nível
+     gratuito tem cota de 0 imagens por dia); sem isso, use "Escolher do computador" ou
+     "Usar imagem padrão".
    - **Checklist** — auditoria em tempo real (título, meta-descrição, densidade da palavra-chave,
      subtítulos, alt, links) e verificação de links externos.
 
