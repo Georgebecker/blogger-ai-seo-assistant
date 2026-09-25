@@ -56,6 +56,7 @@ interface Estado {
   abaAtual: AbaId;
   janela: Window | null;
   editor: HTMLElement | null;
+  editorManual: boolean;
   campoDesc: HTMLTextAreaElement | HTMLInputElement | null;
   keyword: string;
   imagens: ItemImagem[];
@@ -73,6 +74,7 @@ const estado: Estado = {
   abaAtual: 'texto',
   janela: null,
   editor: null,
+  editorManual: false,
   campoDesc: null,
   keyword: '',
   imagens: [],
@@ -281,6 +283,34 @@ interface CandidatoEditor {
   pontuacao: number;
 }
 
+const SELETOR_EDITAVEIS =
+  '[contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable=""], [contenteditable]:not([contenteditable="false"])';
+
+// Coleta elementos editáveis, inclusive dentro de shadow DOM aberto (interface nova do Blogger).
+function coletarEditaveis(doc: Document): HTMLElement[] {
+  const encontrados: HTMLElement[] = [];
+  const fila: Array<Document | ShadowRoot> = [doc];
+  let visitados = 0;
+  while (fila.length && visitados < 20000) {
+    const raiz = fila.shift() as Document | ShadowRoot;
+    try {
+      for (const el of Array.from(raiz.querySelectorAll(SELETOR_EDITAVEIS))) {
+        encontrados.push(el as HTMLElement);
+        visitados += 1;
+      }
+      for (const el of Array.from(raiz.querySelectorAll('*'))) {
+        visitados += 1;
+        if (visitados > 20000) break;
+        const raizSombra = (el as HTMLElement).shadowRoot;
+        if (raizSombra) fila.push(raizSombra);
+      }
+    } catch {
+      // raiz inacessível; ignora
+    }
+  }
+  return encontrados;
+}
+
 function escolherEditor(): CandidatoEditor | null {
   const candidatos: CandidatoEditor[] = [];
   for (const janela of janelasAlcancaveis()) {
@@ -291,19 +321,11 @@ function escolherEditor(): CandidatoEditor | null {
       continue;
     }
     if (!doc) continue;
-    let nos: NodeListOf<HTMLElement>;
-    try {
-      nos = doc.querySelectorAll<HTMLElement>(
-        '[contenteditable="true"], [contenteditable=""], [role="textbox"][contenteditable="true"]',
-      );
-    } catch {
-      continue;
-    }
-    for (const el of Array.from(nos)) {
+    for (const el of coletarEditaveis(doc)) {
       if (!visivel(el)) continue;
       if (el.closest('#' + RAIZ_ID)) continue;
       const retangulo = el.getBoundingClientRect();
-      if (retangulo.width < 240 || retangulo.height < 80) continue;
+      if (retangulo.width < 200 || retangulo.height < 60) continue;
       const texto = (el.innerText || '').trim();
       const pontuacao = texto.length * 6 + (retangulo.width * retangulo.height) / 400;
       candidatos.push({ janela, el, pontuacao });
@@ -316,6 +338,7 @@ function escolherEditor(): CandidatoEditor | null {
 let buscaFalhouEm = 0;
 
 function localizarEditor(): HTMLElement | null {
+  if (estado.editorManual && estado.editor && estado.editor.isConnected) return estado.editor;
   if (estado.editor && estado.editor.isConnected && visivel(estado.editor)) return estado.editor;
   const agora = Date.now();
   if (!estado.editor && agora - buscaFalhouEm < 800) return null;
@@ -551,7 +574,11 @@ function primeiroBlocoDeTexto(editor: HTMLElement): string {
 async function otimizarTexto(): Promise<void> {
   const editor = localizarEditor();
   if (!editor) {
-    definirStatus(refs.statusTexto, 'Não encontrei o editor. Abra a página de edição do post.', 'erro');
+    definirStatus(
+      refs.statusTexto,
+      'Não encontrei o editor. Abra a página de edição do post ou use "Apontar manualmente" no rodapé do painel.',
+      'erro',
+    );
     return;
   }
   const palavra = estado.keyword.trim();
@@ -752,7 +779,11 @@ function coletarImagens(editor: HTMLElement): ColetaImagens {
 function escanearImagens(): void {
   const editor = localizarEditor();
   if (!editor) {
-    definirStatus(refs.statusImagens, 'Não encontrei o editor. Abra a página de edição do post.', 'erro');
+    definirStatus(
+      refs.statusImagens,
+      'Não encontrei o editor. Abra a página de edição do post ou use "Apontar manualmente" no rodapé do painel.',
+      'erro',
+    );
     return;
   }
   const coleta = coletarImagens(editor);
@@ -1337,10 +1368,18 @@ function montarUI(): void {
   secaoImagens.classList.add('bai-oculto');
   secaoChecklist.classList.add('bai-oculto');
 
-  const rodape = criar('footer', {
-    className: 'bai-rodape',
-    texto: 'A chave da API fica no popup da extensão (ícone na barra do Chrome).',
-  });
+  const rodape = criar('footer', { className: 'bai-rodape' });
+  rodape.appendChild(
+    criar('div', { texto: 'A chave da API fica no popup da extensão (ícone na barra do Chrome).' }),
+  );
+  rodape.appendChild(
+    criar('button', {
+      className: 'bai-link',
+      texto: 'Não achou o editor? Apontar manualmente',
+      type: 'button',
+      onclick: () => iniciarEscolhaManual(),
+    }),
+  );
 
   painel.append(cabecalho, abas, corpo, rodape);
   raiz.append(botao, painel);
@@ -1497,6 +1536,54 @@ function alternarPainel(forcar?: boolean): void {
   if (abrir) {
     void atualizarStatusChave();
     if (estado.abaAtual === 'checklist') renderizarChecklist();
+  }
+}
+
+// Modo de emergência: o usuário clica na área de escrita e o assistente guarda esse elemento.
+function iniciarEscolhaManual(): void {
+  const janelas = janelasAlcancaveis();
+  definirStatus(
+    refs.statusTexto,
+    'Clique na área onde você escreve o post (o assistente vai aprender o caminho).',
+    'info',
+  );
+
+  const capturar = (evento: MouseEvent) => {
+    const alvo = evento.target as Element | null;
+    if (alvo && alvo.closest && alvo.closest('#' + RAIZ_ID)) return; // cliques no painel são ignorados
+    evento.preventDefault();
+    evento.stopPropagation();
+    const editavel = alvo && alvo.closest ? (alvo.closest(SELETOR_EDITAVEIS) as HTMLElement | null) : null;
+    if (editavel) {
+      estado.editor = editavel;
+      estado.editorManual = true;
+      try {
+        estado.janela = editavel.ownerDocument.defaultView;
+      } catch {
+        estado.janela = window;
+      }
+      definirStatus(refs.statusTexto, 'Editor apontado manualmente. Agora use as abas normalmente.', 'ok');
+      agendarChecklist();
+    } else {
+      definirStatus(refs.statusTexto, 'Esse ponto não é a área de escrita. Tente de novo pelo botão do rodapé.', 'aviso');
+    }
+    for (const janela of janelas) {
+      try {
+        janela.document.removeEventListener('click', capturar, true);
+        if (janela.document.body) janela.document.body.style.cursor = '';
+      } catch {
+        // janela inacessível; ignora
+      }
+    }
+  };
+
+  for (const janela of janelas) {
+    try {
+      janela.document.addEventListener('click', capturar, true);
+      if (janela.document.body) janela.document.body.style.cursor = 'crosshair';
+    } catch {
+      // janela inacessível; ignora
+    }
   }
 }
 

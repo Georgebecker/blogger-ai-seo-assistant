@@ -272,7 +272,7 @@ async function testarChave(): Promise<{ resposta: string; provedor: string; mode
   const resposta = await chamarIA({
     prompt: 'Responda apenas com a palavra: ok',
     temperatura: 0,
-    maxTokens: 8,
+    maxTokens: 256,
   });
   return {
     resposta: limitarTexto(resposta, 40),
@@ -295,7 +295,7 @@ interface OpcoesIA {
 }
 
 interface RespostaGemini {
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
   promptFeedback?: { blockReason?: string };
   error?: { message?: string };
 }
@@ -434,9 +434,12 @@ function descreverErroApi(provedorNome: string, status: number, detalheApi?: str
 function extrairTexto(dados: RespostaGemini | null): string {
   const candidato = dados && dados.candidates && dados.candidates[0];
   const partes = candidato && candidato.content && candidato.content.parts;
-  if (!partes) {
+  if (!partes || !partes.length) {
     const motivo = dados && dados.promptFeedback && dados.promptFeedback.blockReason;
     if (motivo) throw new Error('O conteúdo foi bloqueado pela IA (' + motivo + ').');
+    if (candidato && candidato.finishReason === 'MAX_TOKENS') {
+      throw new Error('A IA atingiu o limite de resposta antes de escrever. Tente novamente.');
+    }
     return '';
   }
   return partes.map((parte) => parte.text || '').join('').trim();
@@ -523,7 +526,7 @@ async function gerarAlt(mensagem: {
     tipoImagem: tipo,
     esquema: ESQUEMA_ALT,
     temperatura: 0.2,
-    maxTokens: 512,
+    maxTokens: 1024,
   });
   return normalizarAlt(lerJson(bruto));
 }
