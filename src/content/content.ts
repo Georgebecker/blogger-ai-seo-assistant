@@ -938,7 +938,13 @@ async function gerarSugestoesTodas(): Promise<void> {
   estado.ocupado = false;
   ocupar(refs.botaoGerarTodas, false);
   const comSugestao = estado.imagens.filter((i) => i.sugestao).length;
-  definirStatus(refs.statusImagens, comSugestao + ' sugestão(ões) prontas para revisar e aplicar.', 'ok');
+  const comErro = estado.imagens.filter((i) => i.status === 'erro').length;
+  definirStatus(
+    refs.statusImagens,
+    comSugestao + ' sugestão(ões) prontas para revisar e aplicar.' +
+      (comErro ? ' ' + comErro + ' com erro — veja o detalhe em vermelho na lista.' : ''),
+    comSugestao ? 'ok' : 'aviso',
+  );
 }
 
 function aplicarAlt(item: ItemImagem): void {
@@ -1353,7 +1359,7 @@ function montarUI(): void {
     pill,
     criar('button', {
       className: 'bai-fechar',
-      texto: 'Fechar',
+      texto: 'Minimizar',
       type: 'button',
       onclick: () => alternarPainel(false),
     }),
@@ -1638,20 +1644,35 @@ async function carregarPreferencias(): Promise<void> {
   }
 }
 
-function iniciarVigias(): void {
-  document.addEventListener(
-    'input',
-    (evento) => {
+const janelasComVigia = new WeakSet<Document>();
+
+function garantirVigiasDeDigitacao(): void {
+  for (const janela of janelasAlcancaveis()) {
+    let doc: Document | null = null;
+    try {
+      doc = janela.document;
+    } catch {
+      continue;
+    }
+    if (!doc || janelasComVigia.has(doc)) continue;
+    janelasComVigia.add(doc);
+    const aoDigitar = (evento: Event) => {
       const alvo = evento.target as Element | null;
       if (!alvo || typeof alvo.closest !== 'function') return;
       if (alvo.closest('#' + RAIZ_ID)) return;
       const editor = estado.editor;
       if (editor && (editor === alvo || editor.contains(alvo))) agendarChecklist();
-    },
-    true,
-  );
+    };
+    doc.addEventListener('input', aoDigitar, true);
+    doc.addEventListener('change', aoDigitar, true);
+  }
+}
+
+function iniciarVigias(): void {
+  garantirVigiasDeDigitacao();
 
   setInterval(() => {
+    garantirVigiasDeDigitacao();
     if (location.href !== estado.urlAtual) {
       estado.urlAtual = location.href;
       estado.editor = null;

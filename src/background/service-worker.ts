@@ -272,7 +272,7 @@ async function testarChave(): Promise<{ resposta: string; provedor: string; mode
   const resposta = await chamarIA({
     prompt: 'Responda apenas com a palavra: ok',
     temperatura: 0,
-    maxTokens: 256,
+    maxTokens: 1024,
   });
   return {
     resposta: limitarTexto(resposta, 40),
@@ -461,7 +461,7 @@ async function otimizarTexto(mensagem: { text: string; title: string; keyword: s
     prompt: montarPromptTexto({ texto, titulo, palavraChave }),
     esquema: ESQUEMA_TEXTO,
     temperatura: 0.2,
-    maxTokens: 8192,
+    maxTokens: 32768,
   });
 
   return normalizarOtimizacao(lerJson(bruto));
@@ -472,7 +472,7 @@ function montarPromptTexto(dados: { texto: string; titulo: string; palavraChave:
   const trecho = cortado ? dados.texto.slice(0, LIMITE_TEXTO) : dados.texto;
   const linhas = [
     'Você é um especialista em SEO para blogs e escreve em português do Brasil.',
-    'Analise o post abaixo e responda SOMENTE com o JSON pedido, sem comentários.',
+    'Analise o post abaixo e responda SOMENTE com o JSON pedido, sem comentários e sem cercas de código (```).',
     '',
     'Palavra-chave principal: "' + dados.palavraChave + '"',
     dados.titulo ? 'Título atual: "' + dados.titulo + '"' : 'O post ainda não tem título.',
@@ -526,7 +526,7 @@ async function gerarAlt(mensagem: {
     tipoImagem: tipo,
     esquema: ESQUEMA_ALT,
     temperatura: 0.2,
-    maxTokens: 1024,
+    maxTokens: 8192,
   });
   return normalizarAlt(lerJson(bruto));
 }
@@ -539,7 +539,7 @@ function montarPromptImagem(contexto: { titulo: string; palavraChave: string }):
   if (contexto && contexto.palavraChave) linhas.push('Palavra-chave do post: "' + limitarTexto(contexto.palavraChave, 80) + '"');
   linhas.push(
     '',
-    'Responda SOMENTE com o JSON pedido.',
+    'Responda SOMENTE com o JSON pedido, sem cercas de código (```).',
     '- alt: descrição específica e objetiva da imagem, no máximo 10 palavras (até 100 caracteres), sem "imagem de" e sem aspas.',
     '- caption: uma frase curta de legenda que complemente a imagem, sem repetir o alt literalmente.',
   );
@@ -657,21 +657,29 @@ async function verificarUrl(url: string): Promise<ResultadoLink> {
 // ---------------------------------------------------------------------------
 
 function lerJson(texto: string): unknown {
-  try {
-    return JSON.parse(texto);
-  } catch {
-    // segue para a tentativa de recorte
-  }
-  const inicio = texto.indexOf('{');
-  const fim = texto.lastIndexOf('}');
+  const tentativas: string[] = [texto];
+  const semCercas = texto.replace(/```(?:json)?/gi, '').trim();
+  if (semCercas !== texto) tentativas.push(semCercas);
+  const inicio = semCercas.indexOf('{');
+  const fim = semCercas.lastIndexOf('}');
   if (inicio >= 0 && fim > inicio) {
+    tentativas.push(semCercas.slice(inicio, fim + 1));
+  }
+  for (const tentativa of tentativas) {
     try {
-      return JSON.parse(texto.slice(inicio, fim + 1));
+      return JSON.parse(tentativa);
     } catch {
-      // segue para o erro amigável
+      // tenta a próxima forma
+    }
+    try {
+      return JSON.parse(tentativa.replace(/,\s*([}\]])/g, '$1'));
+    } catch {
+      // tenta a próxima forma
     }
   }
-  throw new Error('A IA devolveu uma resposta em formato inesperado. Tente novamente.');
+  throw new Error(
+    'A IA devolveu uma resposta em formato inesperado (pode ter sido cortada). Tente novamente ou use um texto menor.',
+  );
 }
 
 function limitarTexto(valor: unknown, maximo: number): string {
