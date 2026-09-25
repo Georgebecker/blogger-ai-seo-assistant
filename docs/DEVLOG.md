@@ -96,6 +96,7 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 
 ## Linha do tempo
 
+- **25/09/2026** — Prompt da fase de validação real criado em `docs/PROMPTS_AGENTE.md`.
 - **25/09/2026** — Seção "Para agentes de IA" adicionada (ancoragem para uso com DeepSeek).
 - **25/09/2026** — Estrutura inicial: TypeScript + Vite + CRXJS; manifest V3; criptografia
   AES-GCM/PBKDF2; service worker com Gemini (texto + visão) e proxy de links; content script
