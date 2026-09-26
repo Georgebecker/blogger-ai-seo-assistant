@@ -65,6 +65,7 @@ export interface CriacaoPost {
   palavras_secundarias: string[];
   corpo_html: string;
   links_internos: LinkInterno[];
+  links_externos: LinkInterno[];
   observacoes: string[];
 }
 

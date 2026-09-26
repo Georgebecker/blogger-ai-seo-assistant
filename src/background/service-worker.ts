@@ -94,6 +94,18 @@ const ESQUEMA_POST = {
         required: ['ancora', 'url'],
       },
     },
+    links_externos: {
+      type: 'ARRAY',
+      description: 'De 1 a 2 fontes externas reais, já citadas no corpo do texto.',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          ancora: { type: 'STRING' },
+          url: { type: 'STRING', description: 'Endereço de uma fonte real e estável.' },
+        },
+        required: ['ancora', 'url'],
+      },
+    },
     observacoes: { type: 'ARRAY', items: { type: 'STRING' } },
   },
   required: [
@@ -104,6 +116,7 @@ const ESQUEMA_POST = {
     'palavras_secundarias',
     'corpo_html',
     'links_internos',
+    'links_externos',
     'observacoes',
   ],
 };
@@ -880,7 +893,7 @@ async function gerarPost(mensagem: {
     temperatura: 0.3,
     maxTokens: 32768,
   });
-  return normalizarCriacao(lerJson(bruto));
+  return conferirFontesExternas(normalizarCriacao(lerJson(bruto)));
 }
 
 function montarPromptPost(dados: {
@@ -909,6 +922,7 @@ function montarPromptPost(dados: {
     '- Estrutura: use apenas <h2> e <h3> no corpo (o título do post já é o H1); nunca pule níveis; um <h2> a cada 200 a 500 palavras.',
     '- corpo_html: entre 800 e 2500 palavras, parágrafos de 2 a 4 linhas, listas quando ajudar, negrito para destacar.',
     '- Densidade da palavra-chave principal: entre 1% e 2% (nunca acima de 3%).',
+    '- Primeiro parágrafo: nas duas primeiras frases, use a palavra-chave principal e as palavras mais fortes do título (as mesmas que formam o slug), de forma natural.',
     '- Use APENAS estas tags no corpo: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em> e <a href="...">.',
     '- Conteúdo único e específico sobre o assunto; nada de encher linguiça.',
   );
@@ -921,6 +935,9 @@ function montarPromptPost(dados: {
     linhas.push('- links_internos: deixe a lista vazia.');
   }
   linhas.push(
+    '- links_externos: de 1 a 2 FONTES EXTERNAS reais e estáveis que confirmem uma afirmação do texto (documentação oficial, artigo de referência, Wikipedia, site de universidade ou de órgão público). Escreva cada link DENTRO do corpo, na frase em que a afirmação aparece, com âncora descritiva; NUNCA invente endereços.',
+  );
+  linhas.push(
     '- observacoes: até 4 recados curtos para o autor (ex.: onde inserir imagens, fatos a conferir).',
     '',
     'Responda SOMENTE com o JSON pedido, sem cercas de código (```).',
@@ -932,14 +949,6 @@ function normalizarCriacao(bruto: unknown): CriacaoPost {
   const dados = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>;
   const corpo = String(dados.corpo_html || '').trim();
   if (!corpo) throw new Error('A IA não devolveu o texto do post. Tente novamente.');
-  const linksBrutos = Array.isArray(dados.links_internos) ? dados.links_internos : [];
-  const links: LinkInterno[] = [];
-  for (const item of linksBrutos) {
-    const registro = (item || {}) as Record<string, unknown>;
-    const ancora = limitarTexto(registro.ancora, 80);
-    const url = String(registro.url || '').trim();
-    if (ancora && /^https?:/i.test(url)) links.push({ ancora, url });
-  }
   return {
     titulo: limitarTexto(dados.titulo, 90),
     meta_descricao: limitarTexto(dados.meta_descricao, 220),
@@ -947,9 +956,55 @@ function normalizarCriacao(bruto: unknown): CriacaoPost {
     palavra_chave: limitarTexto(dados.palavra_chave, 80),
     palavras_secundarias: vetorDeTextos(dados.palavras_secundarias, 10, 60),
     corpo_html: corpo.slice(0, 120000),
-    links_internos: links.slice(0, 8),
+    links_internos: lerListaDeLinks(dados.links_internos, 8),
+    links_externos: lerListaDeLinks(dados.links_externos, 2),
     observacoes: vetorDeTextos(dados.observacoes, 6, 240),
   };
+}
+
+function lerListaDeLinks(valor: unknown, maximo: number): LinkInterno[] {
+  const brutos = Array.isArray(valor) ? valor : [];
+  const links: LinkInterno[] = [];
+  for (const item of brutos) {
+    const registro = (item || {}) as Record<string, unknown>;
+    const ancora = limitarTexto(registro.ancora, 80);
+    const url = String(registro.url || '').trim();
+    if (ancora && /^https?:/i.test(url)) links.push({ ancora, url });
+  }
+  return links.slice(0, maximo);
+}
+
+// Confere as fontes externas sugeridas (quando o usuário liberou a permissão de links).
+async function conferirFontesExternas(criacao: CriacaoPost): Promise<CriacaoPost> {
+  const recados = [...criacao.observacoes];
+  if (!criacao.links_externos.length) {
+    recados.push(
+      'Nenhuma fonte externa foi sugerida pelo texto; se quiser, gere de novo pedindo explicitamente 1 ou 2 fontes.',
+    );
+    criacao.observacoes = recados.slice(0, 8);
+    return criacao;
+  }
+  let temPermissao = false;
+  try {
+    temPermissao = await chrome.permissions.contains({ origins: ['*://*/*'] });
+  } catch {
+    temPermissao = false;
+  }
+  if (!temPermissao) {
+    recados.push(
+      'Para conferir se as fontes externas respondem, libere a permissão de leitura de links no popup da extensão.',
+    );
+  } else {
+    for (const link of criacao.links_externos) {
+      const resultado = await verificarUrl(link.url);
+      if (resultado.status !== 'ok') {
+        const detalhe = resultado.http ? 'respondeu com erro ' + resultado.http : 'não respondeu';
+        recados.push('A fonte externa "' + link.url + '" ' + detalhe + ' - confirme ou troque antes de publicar.');
+      }
+    }
+  }
+  criacao.observacoes = recados.slice(0, 8);
+  return criacao;
 }
 
 function agoraIso(): string {

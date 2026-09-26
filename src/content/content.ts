@@ -27,6 +27,7 @@ declare global {
 const RAIZ_ID = 'bai-seo-root';
 const CHAVE_KEYWORD = 'bai.keyword';
 const CHAVE_PERSONA = 'bai.persona';
+const CHAVE_META = 'bai.metaDescricao';
 const LIMITE_TEXTO = 15000;
 const MAX_IMAGENS = 15;
 const MAX_LINKS_UI = 20;
@@ -84,6 +85,7 @@ interface Estado {
   imagemCriada: ImagemCriada | null;
   altImagem: string;
   gerandoImagem: boolean;
+  metaCache: { pagina: string; valor: string } | null;
 }
 
 const estado: Estado = {
@@ -105,6 +107,7 @@ const estado: Estado = {
   imagemCriada: null,
   altImagem: '',
   gerandoImagem: false,
+  metaCache: null,
 };
 
 interface Refs {
@@ -436,40 +439,94 @@ function anotacoes(el: Element): string {
     .join(' ');
 }
 
-function localizarCampoTitulo(janela: Window | null, editor: HTMLElement | null): HTMLInputElement | HTMLTextAreaElement | null {
+type CampoTitulo = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
+
+function documentoDe(janela: Window | null): Document | null {
   if (!janela) return null;
-  let doc: Document | null = null;
   try {
-    doc = janela.document;
+    return janela.document;
   } catch {
     return null;
   }
-  if (!doc) return null;
-  const campos = Array.from(
-    doc.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[type="text"], input:not([type]), textarea'),
-  ).filter((el) => visivel(el) && !el.closest('#' + RAIZ_ID));
+}
 
-  const comPista = campos.find((el) => PISTAS_TITULO.test(anotacoes(el)));
-  if (comPista) return comPista;
+// Campos que podem ser o título: entradas de texto e áreas editáveis pequenas.
+function coletarCamposTitulo(doc: Document): CampoTitulo[] {
+  const seletor = [
+    'input[type="text"]',
+    'input:not([type])',
+    'textarea',
+    '[contenteditable="true"]',
+    '[contenteditable="plaintext-only"]',
+    '[contenteditable=""]',
+  ].join(', ');
+  const campos: CampoTitulo[] = [];
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>(seletor))) {
+    if (!visivel(el) || el.closest('#' + RAIZ_ID)) continue;
+    if (el === estado.editor) continue;
+    if (estado.editor && (el.contains(estado.editor) || estado.editor.contains(el))) continue;
+    campos.push(el);
+  }
+  return campos;
+}
 
+function pareceCampoDeTitulo(el: CampoTitulo): boolean {
+  const retangulo = el.getBoundingClientRect();
+  return retangulo.width >= 180 && retangulo.height > 0 && retangulo.height <= 160;
+}
+
+function localizarCampoTitulo(janela: Window | null, editor: HTMLElement | null): CampoTitulo | null {
+  const janelas: Window[] = [];
+  if (janela) janelas.push(janela);
+  for (const outra of janelasAlcancaveis()) {
+    if (outra !== janela) janelas.push(outra);
+  }
+
+  // 1) campo com pista no nome ("título", "title")
+  for (const j of janelas) {
+    const doc = documentoDe(j);
+    if (!doc) continue;
+    const comPista = coletarCamposTitulo(doc).find((el) => PISTAS_TITULO.test(anotacoes(el)));
+    if (comPista && pareceCampoDeTitulo(comPista)) return comPista;
+  }
+
+  // 2) campo de texto logo acima do editor (o título fica em cima do texto)
   if (editor) {
     const topoEditor = editor.getBoundingClientRect().top;
-    const acima = campos.filter((el) => {
-      const retangulo = el.getBoundingClientRect();
-      return retangulo.bottom <= topoEditor + 48 && retangulo.width >= 200;
-    });
+    const acima: CampoTitulo[] = [];
+    for (const j of janelas) {
+      const doc = documentoDe(j);
+      if (!doc) continue;
+      for (const el of coletarCamposTitulo(doc)) {
+        if (!pareceCampoDeTitulo(el)) continue;
+        const retangulo = el.getBoundingClientRect();
+        if (retangulo.bottom <= topoEditor + 48) acima.push(el);
+      }
+    }
     if (acima.length) {
       acima.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
       return acima[0];
     }
   }
-  return campos.find((el) => el.getBoundingClientRect().width >= 280) || null;
+
+  // 3) último recurso: primeiro campo de texto largo da página
+  for (const j of janelas) {
+    const doc = documentoDe(j);
+    if (!doc) continue;
+    const largo = coletarCamposTitulo(doc).find(
+      (el) => pareceCampoDeTitulo(el) && el.getBoundingClientRect().width >= 280,
+    );
+    if (largo) return largo;
+  }
+  return null;
 }
 
 function lerTitulo(): string {
   const campo = localizarCampoTitulo(estado.janela, estado.editor);
   if (!campo) return '';
-  return String(campo.value || campo.textContent || '').trim();
+  const valor = (campo as HTMLInputElement).value;
+  if (typeof valor === 'string' && valor.trim()) return valor.trim();
+  return String(campo.textContent || '').trim();
 }
 
 function localizarCampoDescricao(janela: Window | null): HTMLTextAreaElement | HTMLInputElement | null {
@@ -758,10 +815,14 @@ function aplicarTitulo(valor: string): void {
     definirStatus(refs.statusTexto, 'Não encontrei o campo de título nesta tela.', 'erro');
     return;
   }
-  if (campo.isContentEditable) inserirTexto(campo, valor);
-  else definirValorNativo(campo, valor);
-  definirStatus(refs.statusTexto, 'Título aplicado.', 'ok');
+  gravarTitulo(campo, valor);
+  definirStatus(refs.statusTexto, 'Título aplicado. O Blogger monta o endereço (slug) a partir dele.', 'ok');
   agendarChecklist();
+}
+
+function gravarTitulo(campo: CampoTitulo, valor: string): void {
+  if (campo.isContentEditable) inserirTexto(campo, valor);
+  else definirValorNativo(campo as HTMLInputElement | HTMLTextAreaElement, valor);
 }
 
 async function aplicarMetaDescricao(valor: string): Promise<void> {
@@ -777,8 +838,40 @@ async function aplicarMetaDescricao(valor: string): Promise<void> {
   }
   if (campo.isContentEditable) inserirTexto(campo, valor);
   else definirValorNativo(campo, valor);
-  definirStatus(refs.statusTexto, 'Meta-descrição aplicada.', 'ok');
+  salvarMetaCache(valor);
+  definirStatus(refs.statusTexto, 'Meta-descrição aplicada (o checklist já conta com ela).', 'ok');
   agendarChecklist();
+}
+
+function salvarMetaCache(valor: string): void {
+  estado.metaCache = { pagina: location.pathname, valor };
+  gravarArmazenamentoLocal({ [CHAVE_META]: { pagina: location.pathname, valor } });
+}
+
+async function lerMetaCache(): Promise<void> {
+  const dados = await lerArmazenamentoLocal(CHAVE_META);
+  const bruto = dados[CHAVE_META] as { pagina?: unknown; valor?: unknown } | undefined;
+  if (bruto && bruto.pagina === location.pathname && typeof bruto.valor === 'string') {
+    estado.metaCache = { pagina: location.pathname, valor: bruto.valor };
+  } else {
+    estado.metaCache = null;
+  }
+}
+
+// Abre "Configurações do post", lê a meta-descrição de verdade e atualiza o checklist.
+async function conferirMetaDescricao(): Promise<void> {
+  if (refs.checkAtualizado) refs.checkAtualizado.textContent = 'Procurando a meta-descrição...';
+  const campo = await garantirCampoDescricao();
+  if (!campo) {
+    if (refs.checkAtualizado) {
+      refs.checkAtualizado.textContent =
+        'Não achei a meta-descrição. Abra "Configurações do post" > "Descrição da pesquisa" e clique de novo.';
+    }
+    return;
+  }
+  const valor = String(campo.value || campo.textContent || '').trim();
+  salvarMetaCache(valor);
+  renderizarChecklist();
 }
 
 function substituirTexto(texto: string): void {
@@ -1510,21 +1603,32 @@ function montarChecklist(): ItemChecklist[] {
   }
 
   const campoDesc = localizarCampoDescricao(estado.janela);
-  const descricao = campoDesc ? String(campoDesc.value || campoDesc.textContent || '').trim() : '';
-  if (!campoDesc) {
+  const doCampo = campoDesc ? String(campoDesc.value || campoDesc.textContent || '').trim() : '';
+  const doCache =
+    estado.metaCache && estado.metaCache.pagina === location.pathname ? estado.metaCache.valor.trim() : '';
+  const descricao = doCampo || doCache;
+  if (!campoDesc && !doCache) {
     itens.push(
       itemChecklist(
         'meta-existe',
         'Meta-descrição definida',
         'info',
-        'Abra "Configurações do post" para preencher (a aba Texto sugere uma).',
+        'Não consigo ler sem abrir as configurações: clique em "Conferir meta-descrição" acima (a aba Texto também sugere uma).',
       ),
     );
   } else if (!descricao) {
     itens.push(itemChecklist('meta-existe', 'Meta-descrição definida', 'falha', 'O campo está vazio.'));
   } else {
     itens.push(
-      itemChecklist('meta-existe', 'Meta-descrição definida', 'ok', 'atual: ' + descricao.length + ' caracteres'),
+      itemChecklist(
+        'meta-existe',
+        'Meta-descrição definida',
+        'ok',
+        'atual: ' +
+          descricao.length +
+          ' caracteres' +
+          (doCampo ? '' : ' (último valor lido - clique em "Conferir meta-descrição" para reler)'),
+      ),
     );
     itens.push(
       itemChecklist(
@@ -1941,12 +2045,29 @@ function avaliarCriacao(criacao: CriacaoPost): ItemChecklist[] {
       detalheEstrutura,
     ),
   );
+  const primeiroParagrafo = (doc.body.querySelector('p')?.textContent || '').toLowerCase();
+  itens.push(
+    itemChecklist(
+      'c-primeiro-paragrafo',
+      'Primeiro parágrafo com a palavra-chave',
+      palavra && primeiroParagrafo.includes(palavra) ? 'ok' : 'aviso',
+      palavra ? 'procurando "' + criacao.palavra_chave + '" nas primeiras frases' : '(sem palavra-chave)',
+    ),
+  );
   itens.push(
     itemChecklist(
       'c-links',
       'Links internos sugeridos (2 a 5)',
       criacao.links_internos.length >= 2 ? 'ok' : 'aviso',
       criacao.links_internos.length + ' link(s)',
+    ),
+  );
+  itens.push(
+    itemChecklist(
+      'c-fontes',
+      'Fontes externas no texto (1 a 2)',
+      criacao.links_externos.length >= 1 && criacao.links_externos.length <= 2 ? 'ok' : 'aviso',
+      criacao.links_externos.length + ' fonte(s) externa(s)',
     ),
   );
   itens.push(
@@ -2017,6 +2138,14 @@ function renderizarCriacao(criacao: CriacaoPost): void {
       cardLista('Links internos sugeridos', criacao.links_internos.map((link) => link.ancora + ' -> ' + link.url)),
     );
   }
+  if (criacao.links_externos.length) {
+    caixa.appendChild(
+      cardLista(
+        'Fontes externas no texto',
+        criacao.links_externos.map((link) => link.ancora + ' -> ' + link.url),
+      ),
+    );
+  }
   if (criacao.observacoes.length) caixa.appendChild(cardLista('Recados da IA', criacao.observacoes));
 
   const palavrasCorpo = textoPlanoDoHtml(criacao.corpo_html).split(/\s+/).filter(Boolean).length;
@@ -2048,8 +2177,20 @@ function inserirCriacaoNoPost(criacao: CriacaoPost): void {
     definirStatus(refs.statusCriar, 'Não encontrei o editor. Use "Apontar manualmente" no rodapé do painel.', 'erro');
     return;
   }
-  const confirmado = window.confirm('Inserir o texto gerado no fim do post? Dá para desfazer com Ctrl+Z.');
+  const confirmado = window.confirm(
+    'Inserir o texto gerado no fim do post e aplicar o título?' +
+      ' O título alimenta o endereço (slug). Dá para desfazer com Ctrl+Z.',
+  );
   if (!confirmado) return;
+  let tituloAplicado = false;
+  const campoTitulo = localizarCampoTitulo(estado.janela, editor);
+  if (campoTitulo && criacao.titulo) {
+    const atual = String((campoTitulo as HTMLInputElement).value || campoTitulo.textContent || '').trim();
+    if (atual !== criacao.titulo) {
+      gravarTitulo(campoTitulo, criacao.titulo);
+      tituloAplicado = true;
+    }
+  }
   const html = sanitizarHtml(criacao.corpo_html);
   const doc = editor.ownerDocument;
   editor.focus();
@@ -2082,7 +2223,13 @@ function inserirCriacaoNoPost(criacao: CriacaoPost): void {
     );
     return;
   }
-  definirStatus(refs.statusCriar, 'Texto inserido no fim do post. Revise e salve o rascunho.', 'ok');
+  definirStatus(
+    refs.statusCriar,
+    'Texto inserido no fim do post' +
+      (tituloAplicado ? ' e título aplicado (o endereço/slug sai dele)' : '') +
+      '. Revise e salve o rascunho.',
+    'ok',
+  );
   agendarChecklist();
 }
 
@@ -2439,24 +2586,36 @@ function montarSecaoChecklist(): HTMLElement {
   const linha = criar('div', { className: 'bai-linha-botoes' });
   const reauditar = criar('button', {
     className: 'bai-botao',
-    texto: 'Reauditar',
+    texto: 'Reler agora',
     type: 'button',
     onclick: () => {
+      // Recomeça a leitura do zero, sem perder o editor apontado manualmente.
       if (!estado.editorManual) {
         estado.editor = null;
         estado.janela = null;
-        estado.campoDesc = null;
-        buscaFalhouEm = 0;
       }
+      estado.campoDesc = null;
+      buscaFalhouEm = 0;
       renderizarChecklist();
     },
   }) as HTMLButtonElement;
-  linha.appendChild(reauditar);
+  const conferirMeta = criar('button', {
+    className: 'bai-botao',
+    texto: 'Conferir meta-descrição',
+    type: 'button',
+    onclick: () => void conferirMetaDescricao(),
+  }) as HTMLButtonElement;
+  linha.append(reauditar, conferirMeta);
 
+  const dica = criar('div', {
+    className: 'bai-dica',
+    texto:
+      'O checklist se atualiza sozinho a cada 5 segundos. "Reler agora" força uma leitura nova e não perde nada (nem o editor apontado à mão).',
+  });
   const atualizado = criar('div', { className: 'bai-dica', texto: 'Atualizado às --:--:--' });
   const lista = criar('div');
 
-  secao.append(resumo, linha, atualizado, lista);
+  secao.append(resumo, linha, dica, atualizado, lista);
   refs.resumoCheck = resumo;
   refs.checkAtualizado = atualizado;
   refs.listaCheck = lista;
@@ -2588,6 +2747,7 @@ async function carregarPreferencias(): Promise<void> {
   if (typeof persona === 'string' && persona && refs.persona) {
     refs.persona.value = persona;
   }
+  await lerMetaCache();
 }
 
 const janelasComVigia = new WeakSet<Document>();
@@ -2629,6 +2789,8 @@ function iniciarVigias(): void {
       estado.resultadoLinks = null;
       estado.imagemCriada = null;
       estado.altImagem = '';
+      estado.metaCache = null;
+      void lerMetaCache();
       if (refs.resultadoTexto) refs.resultadoTexto.textContent = '';
       if (refs.listaImagens) refs.listaImagens.textContent = '';
       if (refs.previewImagem) {
