@@ -2,14 +2,17 @@
 
 Extensão do Chrome (Manifest V3) que se integra ao editor do Blogger para:
 
-- **Otimizar o texto** do post para SEO: título, meta-descrição, subtítulos e densidade da palavra-chave.
-- **Gerar ALT e legendas** para imagens sem descrição, usando IA com visão computacional.
-- **Auditar o post** em tempo real: checklist de SEO técnico, links (locais e externos) e aviso de AMP.
+- **Criar posts** a partir de um assunto, com uma personalidade (escrita à mão ou aprendida
+  dos textos do próprio blog) e o texto inteiro já dentro das regras de SEO.
+- **Otimizar o texto** do post: título, meta-descrição, subtítulos e densidade da palavra-chave.
+- **Criar imagens** para o post (comando montado pela IA, comando seu ou arquivo do computador)
+  e **gerar ALT e legendas** para imagens sem descrição.
+- **Auditar o post** em tempo real: checklist de SEO técnico, links internos e externos.
 
-As chaves de API são suas (BYOK): **Google Gemini** ou **DeepSeek** — você escolhe no popup.
-A chave fica guardada **criptografada** (AES-GCM + PBKDF2) no seu navegador e só é usada no
-service worker, no momento da chamada — nunca é exposta na página.
-Por padrão tudo acontece em uma única janela, sem servidor próprio no meio.
+As chaves de API são suas (BYOK): **DeepSeek** e/ou **Google Gemini** — você escolhe o serviço
+principal no popup e pode deixar o outro como **reserva** (entra quando o principal falha, fica
+indisponível ou acaba o crédito). A chave fica guardada **criptografada** (AES-GCM + PBKDF2) no
+seu navegador e só é usada no service worker, no momento da chamada — nunca é exposta na página.
 
 Explicação em linguagem simples (para qualquer pessoa): [`docs/ENTENDA_O_PROJETO.md`](docs/ENTENDA_O_PROJETO.md).
 
@@ -22,7 +25,7 @@ Explicação em linguagem simples (para qualquer pessoa): [`docs/ENTENDA_O_PROJE
 | Linguagem | TypeScript (compilado para JavaScript) | Tipagem estática evita API inexistente e garante conformidade com o Manifest V3 |
 | Build | Vite + `@crxjs/vite-plugin` | Empacotamento otimizado e caminhos do manifest resolvidos automaticamente |
 | Manifest | V3 | Obrigatório para novas extensões |
-| Modelo de IA | Google Gemini ou DeepSeek (você escolhe no popup) | Os dois entendem texto e imagens; padrões: gemini-3.8-flash e deepseek-flash |
+| Modelos de IA | Texto: DeepSeek e/ou Google Gemini, com principal + reserva configuráveis. Imagem: família Nano Banana, do Google | Padrões: `deepseek-flash` e `gemini-3.8-flash`; imagem a partir de `gemini-3.1-flash-image` |
 | Armazenamento | `chrome.storage.local` + criptografia AES-GCM | A chave nunca fica em texto puro no disco |
 
 ## Requisitos
@@ -63,6 +66,9 @@ Outros comandos:
    - a **chave da API** do provedor escolhido;
    - uma **senha mestra** (criada por você; é ela que criptografa a chave).
 3. Clique em **Salvar chave** (e, se quiser conferir, em **Testar conexão**).
+4. Ajuste a **reserva**, se quiser: com a caixa marcada, o outro serviço entra automaticamente
+   quando o principal falhar ou ficar sem créditos. Os modelos ativos aparecem no rodapé do
+   painel e no popup.
 
 A chave fica gravada no `chrome.storage.local` **cifrada**; ao fechar o navegador ela é
 **bloqueada** e basta desbloquear com a senha mestra na próxima vez. Enquanto o navegador
@@ -72,7 +78,7 @@ estiver aberto, a chave desbloqueada fica apenas na memória da sessão (`chrome
 
 1. Entre em `draft.blogger.com` (ou `www.blogger.com`) e abra um post no editor
    (URLs no padrão `/blog/post/...`).
-2. Clique no botão flutuante **Assistente SEO** (canto inferior direito).
+2. Clique no botão flutuante **Assistente AI Blogger** (canto inferior direito).
 3. Abas:
    - **Texto** — informe a palavra-chave e clique em **Otimizar texto**. Revise as sugestões e
      aplique o título, a meta-descrição ou o texto revisado (com confirmação; dá para desfazer
@@ -80,8 +86,9 @@ estiver aberto, a chave desbloqueada fica apenas na memória da sessão (`chrome
      (a extensão abre a seção por você quando precisa).
    - **Criar** — separado da auditoria: escreva (ou aprenda com os textos do blog) uma
      personalidade, informe o assunto e os pontos que precisam aparecer, e receba um post
-     completo com título, meta-descrição, slug, palavras-chave, links internos e texto já
-     dentro das regras de SEO; revise a "Conformidade SEO" e insira no post.
+     completo com título, meta-descrição, slug, palavras-chave, links internos e 1–2 fontes
+     externas citadas no texto; revise a "Conformidade SEO" e use "Inserir no post"
+     (que também aplica o título — o endereço/slug sai dele).
    - **Imagens** — crie uma imagem nova (montada a partir do post, com comando seu, escolhida do
      computador ou padrão), confira a descrição e insira no post; e escaneie as imagens
      existentes sem `alt` para gerar e aplicar sugestões (alt + legenda). Observação: a geração
@@ -119,9 +126,8 @@ blogger-ai-seo-assistant/
 ├── tsconfig.json
 ├── vite.config.ts
 ├── docs/
-│   ├── DEVLOG.md               # Decisões de arquitetura e problemas antecipados
-│   ├── ENTENDA_O_PROJETO.md    # Explicação em linguagem simples (para qualquer pessoa)
-│   └── PROMPTS_AGENTE.md       # Prompts por fase para conduzir agentes de IA
+│   ├── DEVLOG.md               # Decisões, regras invioláveis, problemas e pendências
+│   └── ENTENDA_O_PROJETO.md    # Explicação em linguagem simples (para qualquer pessoa)
 ├── public/
 │   └── icons/                  # Ícones (gerados por tools/gerar_icones.py)
 ├── src/
@@ -149,6 +155,9 @@ blogger-ai-seo-assistant/
 - A verificação de links externos depende da permissão opcional; sem ela, links de outros
   domínios ficam como "não verificado".
 - Textos muito longos são analisados até o limite de 15 mil caracteres por vez.
+- **Inserção automática:** ao inserir conteúdo pela extensão e salvar, o Blogger pode não gravar
+  o corpo do post (em investigação). O caminho garantido é **Copiar texto** e colar no editor
+  com Ctrl+V antes de salvar.
 - Revise sempre o conteúdo sugerido pela IA antes de publicar.
 
 ---

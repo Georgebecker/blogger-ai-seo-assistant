@@ -10,7 +10,7 @@ solução vive no código). Atualize este arquivo a cada decisão relevante.
 | Linguagem | TypeScript compilado para JavaScript | Tipagem estática evita que o agente de IA use APIs inexistentes e garante conformidade com o Manifest V3 |
 | Build | Vite + `@crxjs/vite-plugin` | Empacotamento otimizado; o plugin injeta os caminhos compilados no manifest do `dist/` |
 | Manifest | V3 | Obrigatório para novas extensões |
-| Modelo de IA | Google Gemini (padrão `gemini-3.8-flash`) ou DeepSeek (padrão `deepseek-flash`), escolhido no popup | Os dois entendem texto e imagens; modelo trocável no popup |
+| Modelos de IA | Texto: DeepSeek (`deepseek-flash`) e Google Gemini (`gemini-3.8-flash`), com principal + reserva no popup. Imagem: família Nano Banana do Google | Texto e visão nos dois provedores; imagem só no Google |
 | Armazenamento | `chrome.storage.local` + AES-GCM (PBKDF2) | Chave BYOK nunca em texto puro; `chrome.storage.session` guarda só a cópia desbloqueada |
 
 ## Problemas antecipados e soluções
@@ -53,9 +53,10 @@ dentro de iframes aninhados, com filtros de CSS que removem classes externas.
 
 - Todas as chamadas externas acontecem no **service worker** (que não sofre restrição de CORS
   com as permissões de host declaradas).
-- `host_permissions` no `manifest.json`: `*://*.blogger.com/*` e
-  `https://generativelanguage.googleapis.com/*` (além dos domínios de imagem do Blogger,
-  usados para baixar as fotos antes de enviá-las à IA).
+- `host_permissions` no `manifest.json`: `*://*.blogger.com/*`, `https://generativelanguage.googleapis.com/*`
+  (texto e imagens), `https://api.deepseek.com/*` (texto/visão) e os domínios de imagem do
+  Blogger, usados para baixar as fotos antes de enviá-las à IA. `*://*/*` é **opcional**,
+  pedida só para verificar links externos.
 
 ## Para agentes de IA (leia antes de mexer)
 
@@ -89,13 +90,29 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 | Pergunta | Onde olhar |
 |---|---|
 | Como o editor é localizado (inclusive em iframe)? | `janelasAlcancaveis()` e `escolherEditor()` em `src/content/content.ts` |
-| Onde ficam os prompts da IA? | `montarPromptTexto()` e `montarPromptImagem()` no service worker |
+| Onde ficam os prompts da IA? | `montarPromptTexto()`, `montarPromptImagem()`, `montarPromptPost()` e `montarPromptImagemDoPost()` no service worker |
 | Como a chave é guardada e desbloqueada? | `salvarChave()` e `desbloquear()` no service worker |
 | Quais comandos o fundo aceita? | união `MensagemParaFundo` em `src/lib/messages.ts` |
 | Como compilar e testar? | seção "Como compilar" do `README.md` |
 
+## Pendências abertas
+
+- **Salvar no Blogger depois da inserção automática (investigação):** o usuário relatou que,
+  após usar a inserção da extensão, o Blogger salvava só o título e o corpo sumia no rascunho
+  (contornado copiando o conteúdo de verdade e salvando). Hipóteses, em ordem: (1) conteúdo
+  inserido por `execCommand` não entra no modelo interno do editor; (2) imagem em data URL
+  atrapalha a gravação/sanitização; (3) eventos sintéticos de `input`/`change` (`notificarEditor`)
+  confundem o estado de alterações. Plano: testar só texto, só imagem e colagem real; dependendo
+  do resultado, preferir o fluxo de copiar/colar e/ou rever `notificarEditor`.
+- **Revisão de pontuação pela IA no otimizador de texto** (decisão do usuário: "os dois" —
+  nota local + revisão da IA).
+- **Empacotamento para a Chrome Web Store** (ícones e versão prontos; falta o pacote final).
+
 ## Linha do tempo
 
+- **25/09/2026 (noite, 4)** — Extensão renomeada para "Assistente AI Blogger" (manifesto, versão
+  1.1.0) e documentos revisados (README, DevLog e Entenda o projeto); `docs/PROMPTS_AGENTE.md`
+  arquivado (a fase de validação terminou; as regras para agentes seguem no próprio DevLog).
 - **25/09/2026 (noite, 3)** — Transparência de modelo e reserva: o painel mostra no rodapé "Serviço principal: X (modelo) - reserva: Y (modelo)"; as mensagens de sucesso dizem quem gerou ("Sugestões prontas (geradas por DeepSeek (deepseek-flash))", "Post gerado por ...", "Imagem pronta (modelo ...)"); o popup ganhou a caixa "Usar o outro serviço como reserva" (padrão ligada) e mostra principal/reserva e o último uso (nova chave de sessão `bai.ultimoUso`, mensagem `GET_USO`). Resumo do pós-processamento: `StatusChave` ganhou `reserva/provedorReserva/modeloReserva`. O botão flutuante e o título do painel viraram "Assistente AI Blogger".
 - **25/09/2026 (noite, 2)** — Checklist e geração mais fiéis: título é encontrado mesmo em área editável pequena (busca em todas as janelas; `contenteditable` com altura ≤ 160); meta-descrição passa a ser memorizada por página (`bai.metaDescricao`), com botão "Conferir meta-descrição" que abre Configurações do post, relê e reaudita; "Reauditar" virou "Reler agora" e a dica explica que o checklist já se atualiza a cada 5 s (nada se perde, nem o editor apontado à mão). Na geração: regra do primeiro parágrafo com a palavra-chave (item novo na conformidade), `links_externos` com 1–2 fontes reais citadas no corpo (verificadas via permissão de links; card "Fontes externas no texto") e "Inserir no post" também aplica o título (o slug sai dele).
 - **25/09/2026 (noite)** — Cota de imagem e detecção do editor: erros de nível gratuito (cota 0/dia, "Free Tier") deixam de ser tratados como instabilidade — a extensão tenta os demais modelos de imagem e, se nenhum tiver cota, explica em linguagem clara o que fazer (ativar faturamento no Google AI Studio, colar o comando no Gemini e usar "Escolher do computador", ou "Usar imagem padrão"). Ações manuais (escanear, montar comando, inserir) forçam nova busca do editor e a varredura tenta automaticamente 2 vezes antes de avisar.

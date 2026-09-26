@@ -6,12 +6,20 @@ técnico fica no `README.md` e no `docs/DEVLOG.md`.
 ## O que é
 
 Um assistente que se senta ao lado de quem escreve um post no Blogger (o serviço de blogs do
-Google). Ele não escreve no seu lugar: sugere, arruma e confere. E só aparece quando você está
-na tela de escrever o post — no resto do navegador, fica quietinho.
+Google). Ele sugere, arruma, confere — e, quando você quiser, também escreve um primeiro
+rascunho do post para você. Só aparece quando você está na tela de escrever o post; no resto
+do navegador, fica quietinho.
 
 ## O que ele faz na prática
 
-### 1. Deixa o texto mais fácil de achar no Google
+### 1. Escreve um rascunho inteiro do post para você
+
+Você diz o assunto e o que precisa aparecer no texto — e pode até "ensinar" o seu jeito de
+escrever, deixando o assistente ler os posts que você já publicou. Ele devolve um post
+completo: título, resumo, endereço curto (o "slug"), palavras-chave e o texto já organizado,
+com 1 a 2 fontes externas para dar credibilidade.
+
+### 2. Deixa o texto mais fácil de achar no Google
 
 Você digita qual é o assunto principal do post. O assistente lê o texto e sugere:
 
@@ -19,16 +27,16 @@ Você digita qual é o assunto principal do post. O assistente lê o texto e sug
 - um resumo curto (o textinho que aparece embaixo do link na busca);
 - observações sobre o que dá para melhorar.
 
-As sugestões aparecem numa janelinha — e nada entra no post sem você mandar. Se não gostar,
-é só desfazer.
+As sugestões aparecem numa janelinha — e nada entra no post sem você mandar.
 
-### 2. Descreve as fotos para quem não consegue vê-las
+### 3. Cuida das fotos: descreve as antigas e cria novas
 
 Pessoas cegas usam programas que "leem" a tela; para isso, cada foto precisa de uma descrição
 invisível. O assistente olha cada imagem sem descrição, entende o que tem nela e sugere uma
-frase curta. Você revisa, aplica — e ainda pode gerar uma legenda.
+frase curta. Você revisa, aplica — e ainda pode gerar uma legenda. Ele também cria imagens
+novas a partir do assunto do post (ou de um comando seu) para você inserir no texto.
 
-### 3. Confere uma lista de boas práticas enquanto você escreve
+### 4. Confere uma lista de boas práticas enquanto você escreve
 
 Funciona como uma revisão de professor: o título está num tamanho bom? O resumo foi
 preenchido? As fotos têm descrição? Os links funcionam? Tudo numa listinha com sinais de
@@ -37,7 +45,8 @@ preenchido? As fotos têm descrição? Os links funcionam? Tudo numa listinha co
 ## A história da chave
 
 Para pensar, o assistente precisa de acesso a uma inteligência artificial (Google Gemini ou
-DeepSeek — você escolhe no popup), que é paga por uso — como uma conta de luz. Esse acesso
+DeepSeek — você escolhe o principal no popup e pode deixar o outro como reserva), que é paga
+por uso — como uma conta de luz. Esse acesso
 vem na forma de uma "chave" (um código pessoal):
 
 - A chave é **sua** (você cria no site do provedor escolhido).
@@ -48,20 +57,20 @@ vem na forma de uma "chave" (um código pessoal):
 
 ## O que já está pronto
 
-- **O assistente em si** — montado por completo e conferido por dentro (não dá erro de montagem).
+- **O assistente em si** — funciona de ponta a ponta: otimizar texto, criar posts, criar
+  imagens, descrever fotos e a lista de conferência.
+- **Testado no Blogger de verdade** — com posts reais, ajustando o que apareceu pelo caminho.
 - **O "livro de regras"** — um documento que explica as decisões do projeto e as regras que
   ninguém pode quebrar ao mexer nele. É o que mantém tudo no trilho, mesmo que outra pessoa
   (ou outra inteligência artificial) trabalhe no projeto depois.
-- **O "roteiro de testes"** — um passo a passo para conferir, no navegador de verdade, se cada
-  parte funciona. Como a revisão geral antes da estreia.
-- **O cofre da chave já foi testado** — trancar, destrancar e recusar senha errada: tudo passou.
+- **O cofre da chave** — trancar, destrancar e recusar senha errada: tudo testado.
 
 ## O que falta
 
-**Levar o assistente para dentro do Blogger de verdade e testar com um post de verdade.**
-Isso só você pode fazer, porque precisa da sua conta. O roteiro está pronto: dá para seguir na
-ordem, testando uma parte de cada vez — e qualquer coisa que não funcionar a gente conserta
-na hora (o caminho está em `docs/PROMPTS_AGENTE.md`).
+- **Um ajuste no salvamento:** em alguns casos, depois de o assistente inserir o texto, o
+  Blogger salva só o título e o corpo some do rascunho (em investigação; por enquanto, o
+  caminho garantido é copiar e colar o texto antes de salvar).
+- **Publicar na loja do Chrome** (empacotamento final) e a revisão fina de pontuação do texto.
 
 <details>
 <summary>Ver os nomes técnicos (para curiosos)</summary>
@@ -72,6 +81,6 @@ na hora (o caminho está em `docs/PROMPTS_AGENTE.md`).
 | Mensageiro que trabalha nos bastidores | service worker |
 | Janelinha de configurações | popup |
 | Cofre da chave | chrome.storage.local + criptografia AES-GCM |
-| Acesso pago à IA | chave de API do Google Gemini (BYOK) |
+| Acesso pago à IA | chave de API do Google Gemini ou do DeepSeek (BYOK) |
 
 </details>
