@@ -1,4 +1,4 @@
-# Prompts para o agente — Blogger AI SEO Assistant
+# Prompts para o agente — Assistente AI Blogger
 
 Este arquivo guarda os prompts usados para conduzir agentes de IA (DeepSeek e outros) no
 desenvolvimento do projeto. Antes de executar qualquer fase, o agente deve ler o `README.md`
@@ -25,7 +25,7 @@ Você é um engenheiro de software full-stack especializado em extensões Chrome
 e integração com APIs de IA generativa.
 
 CONTEXTO
-- Projeto: Blogger AI SEO Assistant, já implementado e compilado, em `blogger-ai-seo-assistant/`.
+- Projeto: Assistente AI Blogger, já implementado e compilado, em `blogger-ai-seo-assistant/`.
 - Leia antes de qualquer coisa: `README.md` e `docs/DEVLOG.md` da extensão. O DEVLOG tem as
   regras invioláveis e o mapa do código — não as contrarie.
 - Stack: TypeScript + Vite + @crxjs/vite-plugin (o build gera `dist/`). Sem framework no front.

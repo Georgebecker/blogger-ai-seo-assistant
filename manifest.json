@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Blogger AI SEO Assistant",
-  "version": "1.0.0",
-  "description": "Assistente de SEO e acessibilidade para o editor do Blogger: otimiza o texto, gera ALT para imagens e audita o post.",
+  "name": "Assistente AI Blogger",
+  "version": "1.1.0",
+  "description": "Assistente de IA para o editor do Blogger: cria e otimiza textos com SEO, gera imagens e ALT e audita o post.",
   "minimum_chrome_version": "102",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
@@ -28,7 +28,7 @@
     }
   ],
   "action": {
-    "default_title": "Blogger AI SEO Assistant",
+    "default_title": "Assistente AI Blogger",
     "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

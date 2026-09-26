@@ -1,4 +1,4 @@
-# Blogger AI SEO Assistant
+# Assistente AI Blogger
 
 Extensão do Chrome (Manifest V3) que se integra ao editor do Blogger para:
 

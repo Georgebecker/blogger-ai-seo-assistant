@@ -1,4 +1,4 @@
-# DevLog — Blogger AI SEO Assistant
+# DevLog — Assistente AI Blogger
 
 Registro das decisões de arquitetura e dos problemas técnicos antecipados (e onde cada
 solução vive no código). Atualize este arquivo a cada decisão relevante.
