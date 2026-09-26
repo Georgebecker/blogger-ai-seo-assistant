@@ -16,6 +16,7 @@ import type {
   StatusChave,
   SugestaoAlt,
   SugestaoTexto,
+  UsoIA,
 } from '../lib/messages';
 
 declare global {
@@ -145,6 +146,7 @@ interface Refs {
   resumoCheck: HTMLElement;
   checkAtualizado: HTMLElement;
   listaCheck: HTMLElement;
+  infoServico: HTMLElement;
 }
 
 // Preenchido durante a construção da UI (montarUI).
@@ -707,9 +709,12 @@ async function otimizarTexto(): Promise<void> {
       keyword: palavra,
     });
     renderizarResultados(dados);
+    const rotulo = await rotuloDoUso();
     definirStatus(
       refs.statusTexto,
-      'Sugestões prontas. Revise antes de aplicar.' +
+      'Sugestões prontas' +
+        (rotulo ? ' (geradas por ' + rotulo + ')' : '') +
+        '. Revise antes de aplicar.' +
         (cortado ? ' Texto longo: a análise cobriu os primeiros 15 mil caracteres.' : ''),
       'ok',
     );
@@ -1228,7 +1233,11 @@ async function gerarImagemIA(): Promise<void> {
     };
     estado.altImagem = estado.imagemCriada.alt;
     renderizarPreviewImagem();
-    definirStatus(refs.statusImagem, 'Imagem pronta. Confira a descrição (alt) e clique em "Inserir no post".', 'ok');
+    definirStatus(
+      refs.statusImagem,
+      'Imagem pronta (modelo ' + dados.modelo + '). Confira a descrição (alt) e clique em "Inserir no post".',
+      'ok',
+    );
   } catch (erro) {
     definirStatus(refs.statusImagem, (erro as Error).message, 'erro');
   } finally {
@@ -1889,9 +1898,15 @@ async function aprenderEstilo(): Promise<void> {
       quantidade < 10
         ? ' O ideal são 10 textos ou mais; com menos que isso, complete a personalidade à mão.'
         : '';
+    const rotulo = await rotuloDoUso();
     definirStatus(
       refs.statusCriar,
-      'Estilo aprendido de ' + quantidade + ' post(s) do blog e salvo na personalidade.' + poucos + ' Revise se quiser.',
+      'Estilo aprendido de ' +
+        quantidade +
+        ' post(s) do blog e salvo na personalidade.' +
+        poucos +
+        (rotulo ? ' (análise feita por ' + rotulo + ')' : '') +
+        ' Revise se quiser.',
       quantidade < 10 ? 'aviso' : 'ok',
     );
   } catch (erro) {
@@ -1931,7 +1946,12 @@ async function gerarPost(): Promise<void> {
       blogId: numeroDoBlog(),
     });
     renderizarCriacao(criacao);
-    definirStatus(refs.statusCriar, 'Post gerado. Revise, aplique os campos e insira o texto no post.', 'ok');
+    const rotulo = await rotuloDoUso();
+    definirStatus(
+      refs.statusCriar,
+      'Post gerado' + (rotulo ? ' por ' + rotulo : '') + '. Revise, aplique os campos e insira o texto no post.',
+      'ok',
+    );
   } catch (erro) {
     definirStatus(refs.statusCriar, (erro as Error).message, 'erro');
   } finally {
@@ -2244,7 +2264,7 @@ function montarUI(): void {
 
   const botao = criar('button', {
     className: 'bai-fab',
-    texto: 'Assistente SEO',
+    texto: 'Assistente AI Blogger',
     type: 'button',
     onclick: () => alternarPainel(),
   }) as HTMLButtonElement;
@@ -2253,11 +2273,11 @@ function montarUI(): void {
 
   const painel = criar('section', {
     className: 'bai-painel bai-oculto',
-    'aria-label': 'Blogger AI SEO Assistant',
+    'aria-label': 'Assistente AI Blogger',
   }) as HTMLElement;
 
   const cabecalho = criar('header', { className: 'bai-cabecalho' }, [
-    criar('div', { className: 'bai-titulo', texto: 'Blogger AI SEO Assistant' }),
+    criar('div', { className: 'bai-titulo', texto: 'Assistente AI Blogger' }),
     pill,
     criar('button', {
       className: 'bai-fechar',
@@ -2279,6 +2299,8 @@ function montarUI(): void {
   secaoChecklist.classList.add('bai-oculto');
 
   const rodape = criar('footer', { className: 'bai-rodape' });
+  const infoServico = criar('div', { className: 'bai-dica', texto: 'Serviço de IA: verificando...' });
+  rodape.appendChild(infoServico);
   rodape.appendChild(
     criar('div', { texto: 'A chave da API fica no popup da extensão (ícone na barra do Chrome).' }),
   );
@@ -2299,6 +2321,7 @@ function montarUI(): void {
   refs.botao = botao;
   refs.pill = pill;
   refs.painel = painel;
+  refs.infoServico = infoServico;
   refs.secoes = { texto: secaoTexto, criar: secaoCriar, imagens: secaoImagens, checklist: secaoChecklist };
 }
 
@@ -2558,7 +2581,8 @@ function montarCaixaImagemNova(): HTMLElement {
       texto:
         'A imagem é criada pelo serviço de imagem do Google, a partir do comando que você escreveu. Esse serviço é pago: contas do Google no nível gratuito têm cota de 0 imagens por dia e a geração não funciona. ' +
         'Alternativas que funcionam sempre: cole o comando em um serviço de imagens (por exemplo, o Gemini no navegador), salve a imagem e use "Escolher do computador"; ou use "Usar imagem padrão" para deixar um espaço reservado no post. ' +
-        'Para gerar direto por aqui, ative o faturamento da conta no Google AI Studio.',
+        'Para gerar direto por aqui, ative o faturamento da conta no Google AI Studio. ' +
+        'Os modelos são os "Nano Banana" do Google (gemini-3.1-flash-image, 3.1-flash-lite-image, 3-pro-image e 2.5-flash-image), tentados nessa ordem.',
     }),
   );
 
@@ -2708,9 +2732,35 @@ async function atualizarStatusChave(): Promise<void> {
       refs.pill.textContent = 'chave ativa';
       refs.pill.className = 'bai-pill bai-ok';
     }
+    if (refs.infoServico) {
+      refs.infoServico.textContent =
+        'Serviço principal: ' +
+        nomeDoProvedor(dados.provedor) +
+        ' (' +
+        dados.modelo +
+        ') - reserva: ' +
+        (dados.reserva ? nomeDoProvedor(dados.provedorReserva) + ' (' + dados.modeloReserva + ')' : 'desligada') +
+        '.';
+    }
   } catch {
     refs.pill.textContent = 'indisponível';
     refs.pill.className = 'bai-pill bai-falha';
+    if (refs.infoServico) refs.infoServico.textContent = 'Serviço de IA: indisponível.';
+  }
+}
+
+function nomeDoProvedor(provedor: string): string {
+  return provedor === 'google' ? 'Google' : 'DeepSeek';
+}
+
+// Rótulo do último serviço/modelo que respondeu (para as mensagens de sucesso).
+async function rotuloDoUso(): Promise<string> {
+  try {
+    const uso = await enviarParaFundo<UsoIA | null>({ type: 'GET_USO' });
+    if (!uso) return '';
+    return nomeDoProvedor(uso.provedor) + ' (' + uso.modelo + ')' + (uso.reserva ? ' como reserva' : '');
+  } catch {
+    return '';
   }
 }
 

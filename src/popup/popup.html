@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <title>Blogger AI SEO Assistant</title>
+  <title>Assistente AI Blogger</title>
   <style>
     :root { color-scheme: light; }
     * { box-sizing: border-box; }
@@ -32,16 +32,23 @@
 </head>
 <body>
   <header>
-    <h1>Blogger AI SEO Assistant</h1>
-    <p>Chave Gemini, modelo e permissões</p>
+    <h1>Assistente AI Blogger</h1>
+    <p>Chave, modelo principal e reserva</p>
   </header>
 
   <section>
-    <label for="provider">Provedor de IA</label>
+    <label for="provider">Provedor de IA (principal)</label>
     <select id="provider">
       <option value="google">Google Gemini</option>
       <option value="deepseek">DeepSeek</option>
     </select>
+
+    <label style="display:flex; gap:8px; align-items:flex-start; font-weight:600; margin:10px 0 4px">
+      <input id="reserva" type="checkbox" style="width:auto; margin-top:2px" checked>
+      <span>Usar o outro serviço como reserva (falha, indisponibilidade ou falta de créditos)</span>
+    </label>
+    <p class="dica" id="resumoModelos">-</p>
+    <p class="dica" id="ultimoUso">-</p>
 
     <div class="status" style="margin-top:8px"><span>Situação</span><b id="status">verificando...</b></div>
     <p class="dica" id="chaves">-</p>

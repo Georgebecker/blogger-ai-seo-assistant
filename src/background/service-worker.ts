@@ -22,10 +22,12 @@ import type {
   StatusChave,
   SugestaoAlt,
   SugestaoTexto,
+  UsoIA,
 } from '../lib/messages';
 
 const ARMAZEM_AJUSTES = 'bai.settings';
 const SESSAO_CHAVE = 'bai.sessionKey';
+const USO_IA = 'bai.ultimoUso';
 
 const ENDPOINT_GOOGLE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const ENDPOINT_DEEPSEEK = 'https://api.deepseek.com/chat/completions';
@@ -145,6 +147,8 @@ async function tratarMensagem(mensagem: MensagemParaFundo): Promise<unknown> {
   switch (mensagem.type) {
     case 'GET_STATUS':
       return statusAtual();
+    case 'GET_USO':
+      return lerUso();
     case 'SAVE_KEY':
       return salvarChave(mensagem);
     case 'UNLOCK':
@@ -155,7 +159,7 @@ async function tratarMensagem(mensagem: MensagemParaFundo): Promise<unknown> {
     case 'TEST_KEY':
       return testarChave();
     case 'SET_SETTINGS':
-      return salvarAjustes({ provedor: mensagem.provedor, modelo: mensagem.modelo });
+      return salvarAjustes({ provedor: mensagem.provedor, modelo: mensagem.modelo, reserva: mensagem.reserva });
     case 'AI_OPTIMIZE_TEXT':
       return otimizarTexto(mensagem);
     case 'AI_IMAGE_ALT':
@@ -182,6 +186,7 @@ async function tratarMensagem(mensagem: MensagemParaFundo): Promise<unknown> {
 interface AjustesIA {
   provedor: Provedor;
   modelos: Record<Provedor, string>;
+  reserva: boolean;
 }
 
 interface SessaoIA {
@@ -210,14 +215,20 @@ async function obterAjustes(): Promise<AjustesIA> {
       google: normalizarModelo(String(modelos.google || modeloAntigo || ''), MODELO_PADRAO_GOOGLE),
       deepseek: normalizarModelo(String(modelos.deepseek || ''), MODELO_PADRAO_DEEPSEEK),
     },
+    reserva: bruto.reserva !== false,
   };
 }
 
-async function salvarAjustes(parcial: { provedor?: Provedor; modelo?: string }): Promise<StatusChave> {
+async function salvarAjustes(parcial: {
+  provedor?: Provedor;
+  modelo?: string;
+  reserva?: boolean;
+}): Promise<StatusChave> {
   const atuais = await obterAjustes();
   const proximo: AjustesIA = {
     provedor: parcial.provedor ? normalizarProvedor(parcial.provedor) : atuais.provedor,
     modelos: { ...atuais.modelos },
+    reserva: typeof parcial.reserva === 'boolean' ? parcial.reserva : atuais.reserva,
   };
   if (parcial.modelo !== undefined) {
     const modelo = String(parcial.modelo || '').trim();
@@ -232,7 +243,7 @@ async function salvarAjustes(parcial: { provedor?: Provedor; modelo?: string }):
 async function definirProvedorAtivo(provedor: Provedor): Promise<void> {
   const atuais = await obterAjustes();
   await chrome.storage.local.set({
-    [ARMAZEM_AJUSTES]: { provedor, modelos: { ...atuais.modelos } },
+    [ARMAZEM_AJUSTES]: { provedor, modelos: { ...atuais.modelos }, reserva: atuais.reserva },
   });
 }
 
@@ -272,6 +283,22 @@ async function gravarSessao(provedor: Provedor, apiKey: string): Promise<void> {
   await chrome.storage.session.set({ [SESSAO_CHAVE]: { ativo: provedor, chaves } });
 }
 
+// Guarda qual serviço/modelo respondeu por último (para mostrar no painel).
+async function gravarUso(provedor: Provedor, modelo: string, reserva: boolean): Promise<void> {
+  const uso: UsoIA = { provedor, modelo, reserva, quandoIso: new Date().toISOString() };
+  try {
+    await chrome.storage.session.set({ [USO_IA]: uso });
+  } catch {
+    // sem sessão disponível; o rótulo vale só para a resposta atual
+  }
+}
+
+async function lerUso(): Promise<UsoIA | null> {
+  const dados = (await chrome.storage.session.get(USO_IA)) as Record<string, unknown>;
+  const bruto = dados[USO_IA] as UsoIA | undefined;
+  return bruto && typeof bruto.provedor === 'string' ? bruto : null;
+}
+
 let migracaoFeita = false;
 
 async function garantirMigracao(): Promise<void> {
@@ -296,12 +323,16 @@ async function statusAtual(): Promise<StatusChave> {
     armazemChave('deepseek'),
   ])) as Record<string, unknown>;
   const sessoes = await lerSessoes();
+  const outroProvedor: Provedor = ajustes.provedor === 'google' ? 'deepseek' : 'google';
   return {
     provedor: ajustes.provedor,
     temGoogle: Boolean(local[armazemChave('google')]),
     temDeepSeek: Boolean(local[armazemChave('deepseek')]),
     desbloqueada: sessoes.ativo === ajustes.provedor && Boolean(sessoes.chaves[ajustes.provedor]),
     modelo: ajustes.modelos[ajustes.provedor],
+    reserva: ajustes.reserva,
+    provedorReserva: outroProvedor,
+    modeloReserva: ajustes.modelos[outroProvedor],
   };
 }
 
@@ -367,7 +398,7 @@ async function testarChave(): Promise<{ resposta: string; provedor: string; mode
       temperatura: 0,
       maxTokens: 1024,
     },
-    { semFallback: true, semRetentativas: true },
+    { semFallback: true, semRetentativas: true, naoRegistrar: true },
   );
   return {
     resposta: limitarTexto(resposta, 40),
@@ -403,6 +434,7 @@ interface RespostaDeepSeek {
 interface ControleIA {
   semFallback?: boolean;
   semRetentativas?: boolean;
+  naoRegistrar?: boolean;
 }
 
 // Chama a IA com duas proteções: repeti erros passageiros (429/503, alta procura)
@@ -417,15 +449,22 @@ async function chamarIA(opcoes: OpcoesIA, controle: ControleIA = {}): Promise<st
         ' está bloqueada. Abra o popup da extensão e desbloqueie com a senha mestra (ou salve a chave).',
     );
   }
-  const ordem: Provedor[] = controle.semFallback
-    ? [principal]
-    : [principal, principal === 'google' ? 'deepseek' : 'google'];
+  const outro: Provedor = principal === 'google' ? 'deepseek' : 'google';
+  const ordem: Provedor[] = controle.semFallback || !ajustes.reserva ? [principal] : [principal, outro];
   let ultimoErro: unknown = null;
   for (const provedor of ordem) {
     const chave = sessoes.chaves[provedor];
     if (!chave) continue;
     try {
-      return await chamarProvedor(provedor, chave, ajustes.modelos[provedor], opcoes, !controle.semRetentativas);
+      const texto = await chamarProvedor(
+        provedor,
+        chave,
+        ajustes.modelos[provedor],
+        opcoes,
+        !controle.semRetentativas,
+      );
+      if (!controle.naoRegistrar) await gravarUso(provedor, ajustes.modelos[provedor], provedor !== principal);
+      return texto;
     } catch (erro) {
       ultimoErro = erro;
       const transitorio = erro instanceof ErroApi && erro.transitorio;
@@ -1096,6 +1135,7 @@ async function gerarImagem(mensagem: { prompt: string; proporcao: string; alt: s
   for (const modelo of MODELOS_IMAGEM) {
     try {
       const imagem = await pedirImagem(chave, modelo, limitarTexto(prompt, 1200), proporcao);
+      await gravarUso('google', modelo, false);
       return { imagem, modelo, alt: limitarTexto(mensagem.alt, 125) };
     } catch (erro) {
       ultimoErro = erro;
@@ -1329,6 +1369,7 @@ chrome.runtime.onInstalled.addListener(() => {
           [ARMAZEM_AJUSTES]: {
             provedor: 'google',
             modelos: { google: MODELO_PADRAO_GOOGLE, deepseek: MODELO_PADRAO_DEEPSEEK },
+            reserva: true,
           },
         });
       }

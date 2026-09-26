@@ -1,7 +1,7 @@
 // popup.ts — configuração da chave (BYOK), modelo e permissões.
 // A chave nunca é registrada em log; a criptografia acontece no service worker.
 
-import type { MensagemParaFundo, Provedor, RespostaFundo, StatusChave } from '../lib/messages';
+import type { MensagemParaFundo, Provedor, RespostaFundo, StatusChave, UsoIA } from '../lib/messages';
 
 function porId<T extends HTMLElement>(id: string): T {
   const elemento = document.getElementById(id);
@@ -25,6 +25,9 @@ const refs = {
   permitirLinks: porId<HTMLButtonElement>('grantLinks'),
   alternarChave: porId<HTMLButtonElement>('toggleKey'),
   getKey: porId<HTMLAnchorElement>('getKey'),
+  reserva: porId<HTMLInputElement>('reserva'),
+  resumoModelos: porId<HTMLElement>('resumoModelos'),
+  ultimoUso: porId<HTMLElement>('ultimoUso'),
 };
 
 const NOMES_PROVEDOR: Record<Provedor, string> = { google: 'Google', deepseek: 'DeepSeek' };
@@ -92,6 +95,29 @@ async function atualizarStatus(): Promise<void> {
       'Google: ' + (dados.temGoogle ? 'chave salva' : 'sem chave') +
       ' | DeepSeek: ' + (dados.temDeepSeek ? 'chave salva' : 'sem chave');
     if (dados.modelo) refs.modelo.value = dados.modelo;
+    refs.reserva.checked = dados.reserva;
+    refs.resumoModelos.textContent =
+      'Principal: ' +
+      NOMES_PROVEDOR[dados.provedor] +
+      ' (' +
+      dados.modelo +
+      ') - reserva: ' +
+      (dados.reserva
+        ? NOMES_PROVEDOR[dados.provedorReserva] + ' (' + dados.modeloReserva + ')'
+        : 'desligada');
+    try {
+      const uso = await enviar<UsoIA | null>({ type: 'GET_USO' });
+      refs.ultimoUso.textContent = uso
+        ? 'Último uso: ' +
+          NOMES_PROVEDOR[uso.provedor] +
+          ' (' +
+          uso.modelo +
+          ')' +
+          (uso.reserva ? ' - veio da reserva' : '')
+        : 'Nenhum uso registrado nesta sessão ainda.';
+    } catch {
+      refs.ultimoUso.textContent = '';
+    }
     atualizarLinkChave(dados.provedor);
   } catch (erro) {
     refs.status.textContent = 'indisponível';
@@ -176,6 +202,16 @@ refs.modelo.addEventListener('change', async () => {
   try {
     await enviar<StatusChave>({ type: 'SET_SETTINGS', modelo: refs.modelo.value.trim() });
     mostrar('Modelo salvo.', 'ok');
+  } catch (erro) {
+    mostrar((erro as Error).message, 'erro');
+  }
+});
+
+refs.reserva.addEventListener('change', async () => {
+  try {
+    await enviar<StatusChave>({ type: 'SET_SETTINGS', reserva: refs.reserva.checked });
+    mostrar(refs.reserva.checked ? 'Reserva ligada.' : 'Reserva desligada.', 'ok');
+    await atualizarStatus();
   } catch (erro) {
     mostrar((erro as Error).message, 'erro');
   }

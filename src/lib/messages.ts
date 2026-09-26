@@ -13,6 +13,16 @@ export interface StatusChave {
   temDeepSeek: boolean;
   desbloqueada: boolean;
   modelo: string;
+  reserva: boolean;
+  provedorReserva: Provedor;
+  modeloReserva: string;
+}
+
+export interface UsoIA {
+  provedor: Provedor;
+  modelo: string;
+  reserva: boolean;
+  quandoIso: string;
 }
 
 export interface SugestaoTexto {
@@ -82,11 +92,12 @@ export interface PromptImagem {
 
 export type MensagemParaFundo =
   | { type: 'GET_STATUS' }
+  | { type: 'GET_USO' }
   | { type: 'SAVE_KEY'; provedor: Provedor; apiKey: string; masterPassword: string }
   | { type: 'UNLOCK'; provedor: Provedor; masterPassword: string }
   | { type: 'LOCK' }
   | { type: 'TEST_KEY' }
-  | { type: 'SET_SETTINGS'; provedor?: Provedor; modelo?: string }
+  | { type: 'SET_SETTINGS'; provedor?: Provedor; modelo?: string; reserva?: boolean }
   | { type: 'AI_OPTIMIZE_TEXT'; text: string; title: string; keyword: string }
   | { type: 'AI_IMAGE_ALT'; src: string; contexto: ContextoImagem }
   | { type: 'AI_APRENDER_ESTILO'; blogId: string }
