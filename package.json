@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "icons": "python tools/gerar_icones.py",
-    "test:crypto": "node tools/teste_criptografia.ts"
+    "test:crypto": "node tools/teste_criptografia.ts",
+    "empacotar": "powershell -ExecutionPolicy Bypass -File tools/empacotar_loja.ps1"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^3.0.0",

@@ -1,7 +1,7 @@
 # Entenda o projeto (em palavras simples)
 
 Esta é a explicação da extensão para quem não é da área — sem termos técnicos. O detalhe
-técnico fica no `README.md` e no `docs/DEVLOG.md`.
+técnico fica nos documentos da pasta `docs/` (instalação, uso, arquitetura e segurança).
 
 ## O que é
 
@@ -70,7 +70,9 @@ vem na forma de uma "chave" (um código pessoal):
 - **Um ajuste no salvamento:** em alguns casos, depois de o assistente inserir o texto, o
   Blogger salva só o título e o corpo some do rascunho (em investigação; por enquanto, o
   caminho garantido é copiar e colar o texto antes de salvar).
-- **Publicar na loja do Chrome** (empacotamento final) e a revisão fina de pontuação do texto.
+- **Publicar na loja do Chrome:** o pacote e os textos já estão prontos; faltam a conta de
+  desenvolvedor e o envio para revisão (veja `PUBLICACAO.md`), além da revisão fina de
+  pontuação do texto.
 
 <details>
 <summary>Ver os nomes técnicos (para curiosos)</summary>

@@ -93,7 +93,7 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 | Onde ficam os prompts da IA? | `montarPromptTexto()`, `montarPromptImagem()`, `montarPromptPost()` e `montarPromptImagemDoPost()` no service worker |
 | Como a chave é guardada e desbloqueada? | `salvarChave()` e `desbloquear()` no service worker |
 | Quais comandos o fundo aceita? | união `MensagemParaFundo` em `src/lib/messages.ts` |
-| Como compilar e testar? | seção "Como compilar" do `README.md` |
+| Como compilar e testar? | [`INSTALACAO.md`](INSTALACAO.md) |
 
 ## Pendências abertas
 
@@ -106,10 +106,14 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
   do resultado, preferir o fluxo de copiar/colar e/ou rever `notificarEditor`.
 - **Revisão de pontuação pela IA no otimizador de texto** (decisão do usuário: "os dois" —
   nota local + revisão da IA).
-- **Empacotamento para a Chrome Web Store** (ícones e versão prontos; falta o pacote final).
+- **Publicação na Chrome Web Store:** o pacote (`npm run empacotar` → `loja/`) e os textos da listagem (`PUBLICACAO.md`) estão prontos; faltam a conta de desenvolvedor, o repositório no GitHub e a captura das imagens da listagem.
 
 ## Linha do tempo
 
+- **26/09/2026** — Documentação reorganizada por objetivo: README objetivo e novos guias em `docs/`
+  (INSTALACAO, COMO_USAR, ARQUITETURA, SEGURANCA, PRIVACIDADE e PUBLICACAO); empacotador
+  `tools/empacotar_loja.ps1` (`npm run empacotar`); imagens promocionais
+  (`tools/gerar_promocionais.ps1`); licença MIT adicionada.
 - **25/09/2026 (noite, 4)** — Extensão renomeada para "Assistente AI Blogger" (manifesto, versão
   1.1.0) e documentos revisados (README, DevLog e Entenda o projeto); `docs/PROMPTS_AGENTE.md`
   arquivado (a fase de validação terminou; as regras para agentes seguem no próprio DevLog).
