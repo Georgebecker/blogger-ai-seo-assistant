@@ -153,7 +153,7 @@ A mesma extensão (Manifest V3 do Chrome) pode ser publicada na loja do Edge, se
 
 ## Antes de enviar: cuidados do projeto
 
-- **Pendência conhecida:** a inserção automática + salvar no Blogger ainda está em investigação (veja [`DEVLOG.md`](DEVLOG.md)). Vale tentar resolver antes de enviar, porque a revisão testa os recursos; até lá, a alternativa (Copiar texto + Ctrl+V) funciona e está documentada.
+- **Pendência conhecida (mitigada em 26/09):** a inserção automática + salvar no Blogger recebeu mitigação (inserção pela colagem + aviso imediato se o editor desfizer; protocolo de teste no [`DEVLOG.md`](DEVLOG.md)). Confirme o comportamento no Blogger real antes de enviar, porque a revisão testa os recursos.
 - **Revisão de pontuação do otimizador:** pendente; não bloqueia a publicação.
 - Revise os textos da listagem: sem promessas exageradas e sem sugerir vínculo com o Google.
 - A primeira versão publicada é a 1.1.0; depois dela, cada envio precisa de um número maior.

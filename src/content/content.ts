@@ -423,6 +423,76 @@ function notificarEditor(editor: HTMLElement): void {
   }
 }
 
+// Entrega o conteúdo como uma colagem: os editores ricos tratam a colagem pelo próprio
+// fluxo (sanitização + registro no modelo interno), o que faz o Blogger salvar de verdade.
+// Verifica pelo DOM se a colagem foi aplicada; se não, o chamador usa os caminhos antigos.
+async function inserirPorColagem(editor: HTMLElement, html: string, textoPlano: string): Promise<boolean> {
+  try {
+    const dt = new DataTransfer();
+    dt.setData('text/html', html);
+    dt.setData('text/plain', textoPlano);
+    let evento: ClipboardEvent;
+    try {
+      evento = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
+    } catch {
+      evento = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+    }
+    if (!evento.clipboardData) {
+      Object.defineProperty(evento, 'clipboardData', { value: dt });
+    }
+    const antes = lerTextoDoEditor(editor).length;
+    const cresceu = (): boolean => lerTextoDoEditor(editor).length > antes + 10;
+    editor.dispatchEvent(evento);
+    await dormir(250);
+    if (cresceu()) return true;
+    await dormir(500);
+    return cresceu();
+  } catch {
+    return false;
+  }
+}
+
+// Vigia a inserção por alguns segundos: se o editor desfizer o conteúdo (modelo interno
+// não registrou), o usuário é avisado na hora, antes de perder o texto ao salvar.
+function vigiarInsercao(editor: HTMLElement, textoInserido: string, aoDesfazer: () => void): void {
+  const alvo = textoInserido.replace(/\s+/g, ' ').trim().slice(0, 50);
+  if (alvo.length < 15) return;
+  let conferencias = 0;
+  const conferir = (): void => {
+    conferencias += 1;
+    if (!lerTextoDoEditor(editor).replace(/\s+/g, ' ').includes(alvo)) {
+      aoDesfazer();
+      return;
+    }
+    if (conferencias < 4) window.setTimeout(conferir, 2500);
+  };
+  window.setTimeout(conferir, 2500);
+}
+
+// Mesmo vigia para imagem: confere se a imagem inserida (pelo alt) continua no editor.
+function vigiarImagemNoPost(editor: HTMLElement, alt: string): void {
+  const alvo = alt.trim();
+  if (alvo.length < 5) return;
+  const presente = (): boolean =>
+    Array.from(editor.querySelectorAll<HTMLImageElement>('img')).some(
+      (img) => (img.getAttribute('alt') || '').trim() === alvo,
+    );
+  let conferencias = 0;
+  const conferir = (): void => {
+    conferencias += 1;
+    if (!presente()) {
+      definirStatus(
+        refs.statusImagem,
+        'Atenção: o editor desfez a inserção da imagem. Use "Baixar imagem" e envie pelo botão de imagem do próprio Blogger.',
+        'aviso',
+      );
+      return;
+    }
+    if (conferencias < 4) window.setTimeout(conferir, 2500);
+  };
+  window.setTimeout(conferir, 2500);
+}
+
 // ---------------------------------------------------------------------------
 // Campos de título e meta-descrição
 // ---------------------------------------------------------------------------
@@ -627,7 +697,7 @@ function inserirTexto(elemento: HTMLElement, texto: string): void {
   }
 }
 
-function aplicarTextoNoEditor(editor: HTMLElement, texto: string): void {
+async function aplicarTextoNoEditor(editor: HTMLElement, texto: string, aoDesfazer?: () => void): Promise<void> {
   const doc = editor.ownerDocument;
   editor.focus();
   const selecao = doc.getSelection();
@@ -642,11 +712,13 @@ function aplicarTextoNoEditor(editor: HTMLElement, texto: string): void {
     .map((paragrafo) => paragrafo.trim())
     .filter(Boolean);
   const html = paragrafos.map((p) => '<p>' + escaparHtml(p).replace(/\n/g, '<br>') + '</p>').join('');
-  let aplicado = false;
-  try {
-    aplicado = doc.execCommand('insertHTML', false, html);
-  } catch {
-    aplicado = false;
+  let aplicado = await inserirPorColagem(editor, html, texto);
+  if (!aplicado) {
+    try {
+      aplicado = doc.execCommand('insertHTML', false, html);
+    } catch {
+      aplicado = false;
+    }
   }
   if (!aplicado) {
     try {
@@ -660,6 +732,7 @@ function aplicarTextoNoEditor(editor: HTMLElement, texto: string): void {
     editor.textContent = texto;
     notificarEditor(editor);
   }
+  if (aoDesfazer) vigiarInsercao(editor, texto, aoDesfazer);
 }
 
 function primeiroBlocoDeTexto(editor: HTMLElement): string {
@@ -799,7 +872,7 @@ function renderizarResultados(dados: SugestaoTexto): void {
   }
   if (dados.improved_text) {
     const cartao = cardTexto('Texto otimizado', 'confira antes de aplicar', dados.improved_text, [
-      { rotulo: 'Substituir o texto do post', acao: () => substituirTexto(dados.improved_text), principal: true },
+      { rotulo: 'Substituir o texto do post', acao: () => void substituirTexto(dados.improved_text), principal: true },
       { rotulo: 'Copiar', acao: () => void copiar(dados.improved_text) },
     ]);
     cartao.appendChild(
@@ -879,7 +952,7 @@ async function conferirMetaDescricao(): Promise<void> {
   renderizarChecklist();
 }
 
-function substituirTexto(texto: string): void {
+async function substituirTexto(texto: string): Promise<void> {
   const editor = localizarEditor();
   if (!editor) {
     definirStatus(refs.statusTexto, 'Não encontrei o editor.', 'erro');
@@ -889,7 +962,14 @@ function substituirTexto(texto: string): void {
     'Substituir todo o texto do post pela versão otimizada? O Blogger permite desfazer com Ctrl+Z.',
   );
   if (!confirmado) return;
-  aplicarTextoNoEditor(editor, texto);
+  definirStatus(refs.statusTexto, 'Aplicando o texto no editor...', 'info');
+  await aplicarTextoNoEditor(editor, texto, () =>
+    definirStatus(
+      refs.statusTexto,
+      'Atenção: o editor desfez o texto aplicado (isso acontece em alguns casos). Use "Copiar" e cole no post com Ctrl+V antes de salvar.',
+      'aviso',
+    ),
+  );
   definirStatus(refs.statusTexto, 'Texto do post substituído. Confira e salve o rascunho.', 'ok');
   agendarChecklist();
 }
@@ -1456,6 +1536,7 @@ function inserirImagemNoPost(): void {
     'Imagem inserida no fim do post. Confira e salve o rascunho. Se ela não aparecer depois de publicar, baixe a imagem e envie pelo botão de imagem do Blogger.',
     'ok',
   );
+  vigiarImagemNoPost(editor, alt);
   agendarChecklist();
 }
 
@@ -2182,7 +2263,7 @@ function renderizarCriacao(criacao: CriacaoPost): void {
   cartao.appendChild(preview);
   const acoes = criar('div', { className: 'bai-acoes' });
   acoes.appendChild(
-    criarBotaoComClasse({ rotulo: 'Inserir no post', acao: () => inserirCriacaoNoPost(criacao), principal: true }),
+    criarBotaoComClasse({ rotulo: 'Inserir no post', acao: () => void inserirCriacaoNoPost(criacao), principal: true }),
   );
   acoes.appendChild(
     criarBotaoComClasse({ rotulo: 'Copiar texto', acao: () => void copiar(textoPlanoDoHtml(criacao.corpo_html)) }),
@@ -2191,7 +2272,7 @@ function renderizarCriacao(criacao: CriacaoPost): void {
   caixa.appendChild(cartao);
 }
 
-function inserirCriacaoNoPost(criacao: CriacaoPost): void {
+async function inserirCriacaoNoPost(criacao: CriacaoPost): Promise<void> {
   const editor = localizarEditor();
   if (!editor) {
     definirStatus(refs.statusCriar, 'Não encontrei o editor. Use "Apontar manualmente" no rodapé do painel.', 'erro');
@@ -2211,6 +2292,7 @@ function inserirCriacaoNoPost(criacao: CriacaoPost): void {
       tituloAplicado = true;
     }
   }
+  const textoPlano = textoPlanoDoHtml(criacao.corpo_html);
   const html = sanitizarHtml(criacao.corpo_html);
   const doc = editor.ownerDocument;
   editor.focus();
@@ -2222,15 +2304,18 @@ function inserirCriacaoNoPost(criacao: CriacaoPost): void {
     selecao.removeAllRanges();
     selecao.addRange(intervalo);
   }
-  let aplicado = false;
-  try {
-    aplicado = doc.execCommand('insertHTML', false, html);
-  } catch {
-    aplicado = false;
+  definirStatus(refs.statusCriar, 'Inserindo o texto no editor...', 'info');
+  let aplicado = await inserirPorColagem(editor, html, textoPlano);
+  if (!aplicado) {
+    try {
+      aplicado = doc.execCommand('insertHTML', false, html);
+    } catch {
+      aplicado = false;
+    }
   }
   if (!aplicado) {
     try {
-      aplicado = doc.execCommand('insertText', false, textoPlanoDoHtml(criacao.corpo_html));
+      aplicado = doc.execCommand('insertText', false, textoPlano);
     } catch {
       aplicado = false;
     }
@@ -2249,6 +2334,13 @@ function inserirCriacaoNoPost(criacao: CriacaoPost): void {
       (tituloAplicado ? ' e título aplicado (o endereço/slug sai dele)' : '') +
       '. Revise e salve o rascunho.',
     'ok',
+  );
+  vigiarInsercao(editor, textoPlano, () =>
+    definirStatus(
+      refs.statusCriar,
+      'Atenção: o editor desfez a inserção (isso acontece em alguns casos). Use "Copiar texto" e cole no post com Ctrl+V antes de salvar.',
+      'aviso',
+    ),
   );
   agendarChecklist();
 }

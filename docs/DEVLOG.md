@@ -97,19 +97,27 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 
 ## Pendências abertas
 
-- **Salvar no Blogger depois da inserção automática (investigação):** o usuário relatou que,
-  após usar a inserção da extensão, o Blogger salvava só o título e o corpo sumia no rascunho
-  (contornado copiando o conteúdo de verdade e salvando). Hipóteses, em ordem: (1) conteúdo
-  inserido por `execCommand` não entra no modelo interno do editor; (2) imagem em data URL
-  atrapalha a gravação/sanitização; (3) eventos sintéticos de `input`/`change` (`notificarEditor`)
-  confundem o estado de alterações. Plano: testar só texto, só imagem e colagem real; dependendo
-  do resultado, preferir o fluxo de copiar/colar e/ou rever `notificarEditor`.
+- **Salvar no Blogger depois da inserção automática (mitigado em 26/09; aguarda teste real):**
+  a hipótese principal é que o `insertHTML` não registrava a mudança no modelo interno do
+  editor (por isso o corpo sumia ao salvar). Mitigações em `src/content/content.ts`:
+  (1) a inserção tenta primeiro o caminho de **colagem** (`inserirPorColagem` — dispara um
+  evento `paste` com `DataTransfer`; editores ricos processam colagem pelo próprio fluxo e
+  registram no modelo), com verificação pelo DOM e recuo para `insertHTML`/`insertText`;
+  (2) um **vigia de persistência** (`vigiarInsercao`/`vigiarImagemNoPost`) confere por ~10 s
+  se o editor manteve o conteúdo e avisa na hora se ele desfizer, orientando o uso de
+  "Copiar texto" + Ctrl+V. `notificarEditor` segue apenas nos caminhos de recuo.
+  Protocolo de teste real: inserir um texto pela aba Criar, esperar ~10 s, salvar o rascunho,
+  recarregar e conferir; repetir para "Substituir o texto do post" e para a imagem.
 - **Revisão de pontuação pela IA no otimizador de texto** (decisão do usuário: "os dois" —
   nota local + revisão da IA).
 - **Publicação na Chrome Web Store:** o pacote (`npm run empacotar` → `loja/`) e os textos da listagem (`PUBLICACAO.md`) estão prontos; faltam a conta de desenvolvedor, o repositório no GitHub e a captura das imagens da listagem.
 
 ## Linha do tempo
 
+- **26/09/2026 (tarde)** — Investigação do salvamento pós-inserção: a inserção agora tenta
+  primeiro o caminho de colagem (`inserirPorColagem`) e ganhou vigia de persistência
+  (`vigiarInsercao`/`vigiarImagemNoPost`), que avisa na hora se o editor desfizer o conteúdo;
+  protocolo de teste real descrito nas pendências.
 - **26/09/2026** — Documentação reorganizada por objetivo: README objetivo e novos guias em `docs/`
   (INSTALACAO, COMO_USAR, ARQUITETURA, SEGURANCA, PRIVACIDADE e PUBLICACAO); empacotador
   `tools/empacotar_loja.ps1` (`npm run empacotar`); imagens promocionais
