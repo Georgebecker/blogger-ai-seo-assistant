@@ -1,12 +1,14 @@
 # Política de Privacidade — Assistente AI Blogger
 
-**Última atualização:** 26 de setembro de 2026
+**Última atualização:** 29 de setembro de 2026
 
 ## Resumo
 
-O Assistente AI Blogger é uma extensão de navegador que funciona **localmente**. Ele não coleta, não transmite e não vende dados pessoais para o desenvolvedor ou para terceiros além do necessário para as funções que você aciona, como explicado abaixo.
+O Assistente AI Blogger funciona **no seu navegador, no seu computador**, e **não coleta dados para o desenvolvedor**: não existe servidor do projeto, não há telemetria, rastreamento, estatísticas nem envio de informações em segundo plano. Nada fica com a gente — não recebemos, não armazenamos e não vendemos nenhum dado seu.
 
-## Dados que a extensão trata
+A extensão usa as informações abaixo **apenas para funcionar**, e todas ficam no seu computador. A única saída é a chamada que **você** aciona (otimizar, criar, descrever imagem etc.): o trecho necessário é enviado **direto ao provedor de IA que você escolheu** (Google Gemini ou DeepSeek), com a **sua** chave — como um aplicativo de e-mail que fala com o seu servidor. Tudo detalhado abaixo, sem letras miúdas.
+
+## Dados que a extensão usa para funcionar (e onde ficam)
 
 | Dado | Para quê | Onde fica |
 |---|---|---|

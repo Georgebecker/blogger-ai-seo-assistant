@@ -4,7 +4,7 @@ Este guia cobre as duas publicações: o código no GitHub e a extensão na Chro
 
 ## O que já está pronto
 
-- Manifest V3 válido, versão 1.1.0 e ícones 16/32/48/128.
+- Manifest V3 válido, versão 1.1.1 e ícones 16/32/48/128.
 - Build limpo (`npm run build`) e empacotador (`npm run empacotar` → `loja/assistente-ai-blogger-vX.Y.Z.zip`).
 - Imagens promocionais em `docs/img/` (`banner.png` e `loja-440x280.png`), geradas por `tools/gerar_promocionais.ps1`.
 - Política de privacidade ([`PRIVACIDADE.md`](PRIVACIDADE.md)) e justificativas de permissão.
@@ -128,7 +128,6 @@ E marque as certificações: os dados **não são vendidos**, **não são usados
 | Permissão | Texto sugerido |
 |---|---|
 | `storage` | Guardar a chave de API criptografada, a sessão de desbloqueio e as preferências do usuário. |
-| `activeTab` / `scripting` | Abrir a interface e injetar o painel quando o usuário interage com a extensão no editor. |
 | `*://*.blogger.com/*` | Ler e ajustar o editor do Blogger — finalidade principal da extensão. |
 | `https://generativelanguage.googleapis.com/*` | Chamar a API do Google Gemini (texto, visão e imagens) quando o usuário aciona um recurso. |
 | `https://api.deepseek.com/*` | Chamar a API do DeepSeek quando for o provedor escolhido pelo usuário. |
@@ -156,4 +155,4 @@ A mesma extensão (Manifest V3 do Chrome) pode ser publicada na loja do Edge, se
 - **Pendência conhecida (mitigada em 26/09):** a inserção automática + salvar no Blogger recebeu mitigação (inserção pela colagem + aviso imediato se o editor desfizer; protocolo de teste no [`DEVLOG.md`](DEVLOG.md)). Confirme o comportamento no Blogger real antes de enviar, porque a revisão testa os recursos.
 - **Revisão de pontuação do otimizador:** pendente; não bloqueia a publicação.
 - Revise os textos da listagem: sem promessas exageradas e sem sugerir vínculo com o Google.
-- A primeira versão publicada é a 1.1.0; depois dela, cada envio precisa de um número maior.
+- A primeira versão enviada é a 1.1.1; depois dela, cada envio precisa de um número maior.

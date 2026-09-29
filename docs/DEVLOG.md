@@ -114,6 +114,10 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 
 ## Linha do tempo
 
+- **29/09/2026** — Versão 1.1.1 para a Chrome Web Store: removidas as permissões `activeTab` e
+  `scripting` do manifesto (não eram utilizadas; a loja apontou permissões excessivas na 1.1.0 —
+  "Purple Potassium"); tabelas de permissões de `PUBLICACAO.md` e `SEGURANCA.md` atualizadas;
+  pacote reconstruído, reassinado (CRX) e submetido para revisão.
 - **26/09/2026 (tarde)** — Investigação do salvamento pós-inserção: a inserção agora tenta
   primeiro o caminho de colagem (`inserirPorColagem`) e ganhou vigia de persistência
   (`vigiarInsercao`/`vigiarImagemNoPost`), que avisa na hora se o editor desfizer o conteúdo;

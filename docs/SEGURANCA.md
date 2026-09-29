@@ -23,7 +23,6 @@ Não há telemetria, analytics, rastreamento nem envio de dados "em segundo plan
 | Permissão | Para quê |
 |---|---|
 | `storage` | Guardar a chave criptografada, a sessão de desbloqueio e as preferências |
-| `activeTab`, `scripting` | Recursos do popup e injeção do painel quando você interage |
 | `*://*.blogger.com/*` | Ler e ajustar o editor do Blogger — a finalidade principal da extensão |
 | `https://generativelanguage.googleapis.com/*` | Chamar a API do Google Gemini (texto, visão e imagens) |
 | `https://api.deepseek.com/*` | Chamar a API do DeepSeek (quando for o provedor escolhido) |

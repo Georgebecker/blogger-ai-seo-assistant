@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Assistente AI Blogger",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Assistente de IA para o editor do Blogger: cria e otimiza textos com SEO, gera imagens e ALT e audita o post.",
   "minimum_chrome_version": "102",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage"],
   "host_permissions": [
     "*://*.blogger.com/*",
     "https://generativelanguage.googleapis.com/*",
