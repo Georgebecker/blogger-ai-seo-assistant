@@ -10,3 +10,8 @@ loja/
 # Chaves de assinatura e pacotes assinados (nunca versionar)
 *.pem
 *.crx
+
+# ---- Ambiente e segredos (protecao adicionada por novo-env.ps1) ----
+.env
+.env.*
+!.env.example
