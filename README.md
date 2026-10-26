@@ -5,6 +5,7 @@
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-4f46e5)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-22c55e)
+[![Instalar na Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Instalar-4f46e5?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/assistente-ai-blogger/dknljonehldnnlgdeonapcnnkolopedd)
 
 Extensão do Chrome (Manifest V3) que leva inteligência artificial para dentro do **editor do Blogger**: cria e otimiza textos com SEO, gera imagens e descrições ALT e audita o post em tempo real — sem sair da tela de edição e sem alterar nada sem a sua confirmação.
 
@@ -46,6 +47,8 @@ flowchart LR
 | Armazenamento | `chrome.storage.local` + criptografia AES-GCM (PBKDF2) |
 
 ## Instalação rápida (modo desenvolvedor)
+
+> **Só quer usar?** A extensão já está publicada na [Chrome Web Store](https://chromewebstore.google.com/detail/assistente-ai-blogger/dknljonehldnnlgdeonapcnnkolopedd) — instale por lá e pule esta seção. O passo a passo abaixo é para compilar do código-fonte.
 
 ```powershell
 npm install
