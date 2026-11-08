@@ -13,7 +13,8 @@ A extensão usa as informações abaixo **apenas para funcionar**, e todas ficam
 | Dado | Para quê | Onde fica |
 |---|---|---|
 | Chave de API (BYOK) | Autenticar as chamadas ao provedor de IA escolhido por você | Criptografada (AES-GCM + PBKDF2) no `chrome.storage.local` do seu navegador |
-| Senha mestra | Derivar a chave de criptografia do cofre | Nunca sai do seu computador; não é armazenada de forma legível |
+| Senha mestra | Derivar a chave de criptografia do cofre | Nunca sai do seu computador e não é armazenada |
+| Chave derivada para desbloqueio automático | Abrir a chave cifrada quando você usa o Blogger | Chave não exportável no IndexedDB do perfil do Chrome |
 | Conteúdo do post (texto, título, imagens) | Gerar as sugestões (otimizar, criar, descrever imagens) | Enviado somente quando você aciona um recurso, direto ao provedor escolhido; não é armazenado pelo desenvolvedor |
 | Preferências (provedor, modelo, reserva) | Manter a extensão configurada como você deixou | `chrome.storage` do seu navegador |
 | Links do post | Verificar se respondem (recurso opcional) | Requisição feita pelo seu navegador aos próprios sites dos links |
@@ -37,7 +38,8 @@ O desenvolvedor **não tem acesso** a nenhum desses dados: não existe servidor 
 ## Retenção e exclusão
 
 - Os dados ficam apenas no seu navegador.
-- Para apagar tudo: remova a extensão (ou limpe os dados dela em `chrome://extensions`). Não há cópia em servidores do projeto.
+- O botão **Bloquear** apaga a autorização automática e a chave de API da sessão; a chave cifrada continua salva até ser removida.
+- Para apagar os dados vinculados à extensão, remova-a em `chrome://extensions` ou limpe os dados dela. O Chrome remove o armazenamento da extensão; isso não é uma garantia de apagamento forense do dispositivo. Não há cópia em servidores do projeto.
 
 ## Segurança
 

@@ -7,7 +7,18 @@
 // - o listener devolve `true` para manter o canal aberto até a resposta assíncrona;
 // - a chave nunca é registrada em log nem enviada ao content script.
 
-import { encryptKey, decryptKey, type PacoteChave } from '../lib/crypto-utils';
+import {
+  decryptKeyWithDerivedKey,
+  deriveKeyForPackage,
+  encryptKeyWithDerivedKey,
+  type PacoteChave,
+} from '../lib/crypto-utils';
+import {
+  apagarChaveAutomatica,
+  apagarChavesAutomaticas,
+  guardarChaveAutomatica,
+  lerChaveAutomatica,
+} from '../lib/auto-unlock';
 import type {
   CriacaoPost,
   LinkInterno,
@@ -317,6 +328,7 @@ async function garantirMigracao(): Promise<void> {
 }
 
 async function statusAtual(): Promise<StatusChave> {
+  await garantirDesbloqueioAutomatico();
   const ajustes = await obterAjustes();
   const local = (await chrome.storage.local.get([
     armazemChave('google'),
@@ -344,8 +356,24 @@ async function salvarChave(mensagem: { provedor: Provedor; apiKey: string; maste
   if (chave.length < 20) throw new Error('A chave da API parece curta demais. Confira no painel do provedor.');
   if (senha.length < 8) throw new Error('A senha mestra precisa ter pelo menos 8 caracteres.');
 
-  const pacote = await encryptKey(chave, senha);
+  const { pacote, chave: chaveDerivada } = await encryptKeyWithDerivedKey(chave, senha);
   await chrome.storage.local.set({ [armazemChave(provedor)]: pacote });
+  try {
+    await guardarChaveAutomatica(provedor, pacote.sal, chaveDerivada);
+  } catch (erro) {
+    try {
+      await apagarChaveAutomatica(provedor);
+    } catch (erroRemocao) {
+      throw new Error(
+        'A chave foi salva cifrada, mas o desbloqueio automático falhou e a autorização anterior não pôde ser removida. ' +
+          textoDoErro(erroRemocao),
+      );
+    }
+    throw new Error(
+      'A chave foi salva cifrada, mas não foi possível ativar o desbloqueio automático. ' +
+        textoDoErro(erro),
+    );
+  }
   await definirProvedorAtivo(provedor);
   await gravarSessao(provedor, chave);
   return statusAtual();
@@ -362,21 +390,61 @@ async function desbloquear(mensagem: { provedor: Provedor; masterPassword: strin
   }
 
   let chave: string;
+  let chaveDerivada: CryptoKey;
   try {
-    chave = await decryptKey(pacote, senha);
+    chaveDerivada = await deriveKeyForPackage(pacote, senha);
+    chave = await decryptKeyWithDerivedKey(pacote, chaveDerivada);
   } catch {
     throw new Error('Senha mestra incorreta.');
   }
+  await guardarChaveAutomatica(provedor, pacote.sal, chaveDerivada);
   await definirProvedorAtivo(provedor);
   await gravarSessao(provedor, chave);
   return statusAtual();
 }
 
 async function bloquear(): Promise<void> {
+  await apagarChavesAutomaticas();
   await chrome.storage.session.remove(SESSAO_CHAVE);
 }
 
+async function garantirDesbloqueioAutomatico(): Promise<void> {
+  const ajustes = await obterAjustes();
+  const sessoes = await lerSessoes();
+  const local = (await chrome.storage.local.get([
+    armazemChave('google'),
+    armazemChave('deepseek'),
+  ])) as Record<string, unknown>;
+  const chaves = { ...sessoes.chaves };
+  let alterada = false;
+
+  for (const provedor of ['google', 'deepseek'] as const) {
+    if (chaves[provedor]) continue;
+    const pacote = local[armazemChave(provedor)] as PacoteChave | undefined;
+    if (!pacote) continue;
+    const chaveDerivada = await lerChaveAutomatica(provedor, pacote.sal);
+    if (!chaveDerivada) continue;
+    try {
+      chaves[provedor] = await decryptKeyWithDerivedKey(pacote, chaveDerivada);
+    } catch {
+      throw new Error(
+        'O desbloqueio automático do ' + NOMES_PROVEDOR[provedor] +
+          ' falhou. Abra o popup e desbloqueie a chave novamente com a senha mestra.',
+      );
+    }
+    alterada = true;
+  }
+
+  const provedorAtivo = chaves[ajustes.provedor] ? ajustes.provedor : sessoes.ativo;
+  if (alterada || provedorAtivo !== sessoes.ativo) {
+    await chrome.storage.session.set({
+      [SESSAO_CHAVE]: { ativo: provedorAtivo, chaves },
+    });
+  }
+}
+
 async function obterChaveAtiva(): Promise<SessaoIA> {
+  await garantirDesbloqueioAutomatico();
   const ajustes = await obterAjustes();
   const sessoes = await lerSessoes();
   const chave = sessoes.chaves[ajustes.provedor];
@@ -442,6 +510,7 @@ interface ControleIA {
 async function chamarIA(opcoes: OpcoesIA, controle: ControleIA = {}): Promise<string> {
   const ajustes = await obterAjustes();
   const principal = ajustes.provedor;
+  await garantirDesbloqueioAutomatico();
   const sessoes = await lerSessoes();
   if (sessoes.ativo !== principal || !sessoes.chaves[principal]) {
     throw new Error(

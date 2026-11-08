@@ -34,7 +34,7 @@ O painel (content script) nunca fala com a internet nem toca na chave: ele conve
 | Manifest | V3 | Obrigatório para novas extensões |
 | IA de texto | DeepSeek (`deepseek-flash`) e Google Gemini (`gemini-3.8-flash`), com principal + reserva | Texto e visão nos dois provedores |
 | IA de imagem | Família de modelos de imagem do Google | Geração de imagens só no Google |
-| Armazenamento | `chrome.storage.local` + AES-GCM (PBKDF2) | A chave nunca fica em texto puro; a cópia desbloqueada vive em `chrome.storage.session` |
+| Armazenamento | `chrome.storage.local` + AES-GCM (PBKDF2) + IndexedDB | A chave de API fica cifrada; o IndexedDB guarda a chave derivada não exportável para desbloquear automaticamente; `chrome.storage.session` guarda a cópia aberta |
 
 ## Fluxo de uma ação de IA
 
@@ -63,7 +63,7 @@ Fonte única: `src/lib/messages.ts`. Tipos disponíveis hoje:
 ## Decisões e problemas resolvidos (resumo)
 
 - **Editor `contenteditable` (e iframes):** busca recursiva de janelas (`janelasAlcancaveis()`), escolha do editor por pontuação e escrita via Range + Selection + `execCommand`, sempre avisando o editor.
-- **Service worker dorme:** estado crítico vai imediatamente para `chrome.storage.local`; o desbloqueio fica em `chrome.storage.session`; o listener de mensagens devolve `true` para manter o canal aberto.
+- **Service worker dorme:** os dados cifrados ficam em `chrome.storage.local`; a chave derivada não exportável fica no IndexedDB para reabrir a sessão automaticamente; o listener de mensagens devolve `true` para manter o canal aberto.
 - **CORS:** todo `fetch` externo acontece no service worker.
 - **Dois provedores com reserva:** escolha no popup, chaves cifradas separadas e troca automática em falha, indisponibilidade ou falta de créditos.
 - **Cota de imagem:** o nível gratuito do Google tem cota 0/dia — a extensão detecta, tenta os demais modelos e explica as alternativas em linguagem clara.

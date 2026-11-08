@@ -11,7 +11,7 @@ solução vive no código). Atualize este arquivo a cada decisão relevante.
 | Build | Vite + `@crxjs/vite-plugin` | Empacotamento otimizado; o plugin injeta os caminhos compilados no manifest do `dist/` |
 | Manifest | V3 | Obrigatório para novas extensões |
 | Modelos de IA | Texto: DeepSeek (`deepseek-flash`) e Google Gemini (`gemini-3.8-flash`), com principal + reserva no popup. Imagem: família Nano Banana do Google | Texto e visão nos dois provedores; imagem só no Google |
-| Armazenamento | `chrome.storage.local` + AES-GCM (PBKDF2) | Chave BYOK nunca em texto puro; `chrome.storage.session` guarda só a cópia desbloqueada |
+| Armazenamento | `chrome.storage.local` + AES-GCM (PBKDF2) + IndexedDB | Chave BYOK cifrada; o IndexedDB guarda a chave derivada não exportável para o desbloqueio automático; `chrome.storage.session` guarda a cópia aberta |
 
 ## Problemas antecipados e soluções
 
@@ -41,6 +41,8 @@ dentro de iframes aninhados, com filtros de CSS que removem classes externas.
 
 - Estado crítico (chave cifrada, preferências) é gravado **imediatamente** em
   `chrome.storage.local` (`src/background/service-worker.ts`).
+- O IndexedDB mantém a chave derivada não exportável para reabrir as chaves ao entrar
+  no Blogger; o botão **Bloquear** remove essa autorização persistente.
 - A chave desbloqueada fica em `chrome.storage.session` (memória da sessão do navegador;
   não persiste em disco e some ao fechar o Chrome).
 - O listener de mensagens devolve `true` para manter o canal aberto até a resposta da IA.
@@ -71,8 +73,8 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
    A criptografia fica em `src/lib/crypto-utils.ts` e é usada só no service worker.
 3. Todo contrato de mensagem novo entra em `src/lib/messages.ts` (fonte única) e é atendido
    em `tratarMensagem()` no service worker; o listener sempre devolve `true` (resposta assíncrona).
-4. Estado crítico vai imediatamente para `chrome.storage.local`; a chave desbloqueada fica
-   apenas em `chrome.storage.session` (nunca em texto puro no `local`).
+4. A chave de API cifrada fica em `chrome.storage.local`; a derivada não exportável fica
+   no IndexedDB; a chave de API aberta fica apenas em `chrome.storage.session`.
 5. Não usar classes voláteis do Blogger em seletores; preferir atributos estáveis
    (`aria-label`, `placeholder`, `[contenteditable]`) e as heurísticas de `src/content/content.ts`.
 6. Conteúdo vindo da IA nunca entra como HTML sem escape; textos entram por `textContent`
@@ -114,6 +116,14 @@ qualquer mudança, confira as regras abaixo — elas evitam retrabalho e quebra 
 
 ## Linha do tempo
 
+- **08/11/2026** — Preparada a versão 2.0.0 para teste local: desbloqueio automático
+  das chaves cifradas no perfil local do Chrome; a pasta de teste é
+  `blogger_ai_seo_assistant V2`. Ainda não publicada na Chrome Web Store.
+- **08/11/2026** — Preparada a versão 1.2.0, ainda não publicada: desbloqueio automático
+  das chaves cifradas no perfil local do Chrome:
+  uma chave derivada não exportável fica no IndexedDB; o botão **Bloquear** apaga essa
+  autorização. A documentação agora explicita a redução de proteção e a exclusão dos
+  dados vinculados à extensão ao desinstalá-la.
 - **29/09/2026** — Versão 1.1.1 para a Chrome Web Store: removidas as permissões `activeTab` e
   `scripting` do manifesto (não eram utilizadas; a loja apontou permissões excessivas na 1.1.0 —
   "Purple Potassium"); tabelas de permissões de `PUBLICACAO.md` e `SEGURANCA.md` atualizadas;

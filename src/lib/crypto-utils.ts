@@ -14,6 +14,11 @@ export interface PacoteChave {
   cifrado: string;
 }
 
+export interface ChaveCifradaComDerivacao {
+  pacote: PacoteChave;
+  chave: CryptoKey;
+}
+
 const codificador = new TextEncoder();
 const decodificador = new TextDecoder();
 
@@ -47,8 +52,11 @@ async function derivarChave(senhaMestra: string, sal: Uint8Array, iteracoes: num
   );
 }
 
-// Devolve um pacote autocontido: versão, iterações, sal, IV e texto cifrado (em base64).
-export async function encryptKey(apiKey: string, masterPassword: string): Promise<PacoteChave> {
+// Devolve o pacote cifrado e a chave não exportável usada para abri-lo.
+export async function encryptKeyWithDerivedKey(
+  apiKey: string,
+  masterPassword: string,
+): Promise<ChaveCifradaComDerivacao> {
   const sal = crypto.getRandomValues(new Uint8Array(TAMANHO_SAL));
   const iv = crypto.getRandomValues(new Uint8Array(TAMANHO_IV));
   const chave = await derivarChave(masterPassword, sal, PBKDF2_ITERACOES);
@@ -58,27 +66,45 @@ export async function encryptKey(apiKey: string, masterPassword: string): Promis
     codificador.encode(apiKey),
   );
   return {
-    v: 1,
-    iteracoes: PBKDF2_ITERACOES,
-    sal: paraBase64(sal),
-    iv: paraBase64(iv),
-    cifrado: paraBase64(new Uint8Array(cifrado)),
+    pacote: {
+      v: 1,
+      iteracoes: PBKDF2_ITERACOES,
+      sal: paraBase64(sal),
+      iv: paraBase64(iv),
+      cifrado: paraBase64(new Uint8Array(cifrado)),
+    },
+    chave,
   };
 }
 
-// Lança erro quando a senha mestra está errada (o AES-GCM autentica o conteúdo).
-export async function decryptKey(pacote: PacoteChave, masterPassword: string): Promise<string> {
+// Mantém a API usada pelos testes e pelos pacotes antigos.
+export async function encryptKey(apiKey: string, masterPassword: string): Promise<PacoteChave> {
+  return (await encryptKeyWithDerivedKey(apiKey, masterPassword)).pacote;
+}
+
+export async function deriveKeyForPackage(pacote: PacoteChave, masterPassword: string): Promise<CryptoKey> {
   if (!pacote || !pacote.sal || !pacote.iv || !pacote.cifrado) {
     throw new Error('Pacote de chave inválido.');
   }
   const sal = deBase64(pacote.sal);
+  return derivarChave(masterPassword, sal, Number(pacote.iteracoes) || PBKDF2_ITERACOES);
+}
+
+export async function decryptKeyWithDerivedKey(pacote: PacoteChave, chave: CryptoKey): Promise<string> {
+  if (!pacote || !pacote.sal || !pacote.iv || !pacote.cifrado) {
+    throw new Error('Pacote de chave inválido.');
+  }
   const iv = deBase64(pacote.iv);
-  const iteracoes = Number(pacote.iteracoes) || PBKDF2_ITERACOES;
-  const chave = await derivarChave(masterPassword, sal, iteracoes);
   const plano = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: iv as BufferSource },
     chave,
     deBase64(pacote.cifrado) as BufferSource,
   );
   return decodificador.decode(plano);
+}
+
+// Lança erro quando a senha mestra está errada (o AES-GCM autentica o conteúdo).
+export async function decryptKey(pacote: PacoteChave, masterPassword: string): Promise<string> {
+  const chave = await deriveKeyForPackage(pacote, masterPassword);
+  return decryptKeyWithDerivedKey(pacote, chave);
 }

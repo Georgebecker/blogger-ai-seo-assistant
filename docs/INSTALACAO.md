@@ -18,7 +18,7 @@ npm install
 npm run build
 ```
 
-O `npm run build` roda a checagem de tipos (TypeScript) e gera a pasta `dist/` — é essa pasta que o Chrome carrega.
+O `npm run build` roda a checagem de tipos (TypeScript) e gera os arquivos da extensão em `dist/`. Copie o conteúdo dessa pasta para `blogger_ai_seo_assistant V2`, que é a pasta preparada para o teste local.
 
 Outros comandos:
 
@@ -34,7 +34,7 @@ Outros comandos:
 
 1. Abra `chrome://extensions`.
 2. Ative o **Modo do desenvolvedor** (canto superior direito).
-3. Clique em **Carregar sem compactação** e escolha a pasta `dist/`.
+3. Clique em **Carregar sem compactação** e escolha a pasta `blogger_ai_seo_assistant V2`.
 4. Fixe a extensão na barra de ferramentas (ícone de extensões > fixar).
 5. Abra um post no editor do Blogger (endereço no padrão `/blog/post/...`) e clique no botão flutuante **Assistente AI Blogger**, no canto inferior direito.
 
@@ -52,7 +52,7 @@ A extensão não cobra nem hospeda nada: você usa a sua própria chave de IA.
 4. Cole a **chave da API** e crie uma **senha mestra** (mínimo de 8 caracteres; ela não sai do seu computador).
 5. Clique em **Salvar chave** e, para conferir, em **Testar conexão**.
 
-Ao fechar o navegador a chave é trancada; para usar de novo, clique em **Desbloquear** e informe a senha mestra. O botão **Bloquear** tranca na hora, quando você quiser.
+Depois de salvar ou desbloquear uma chave, ela será aberta automaticamente no perfil do Chrome quando você entrar no editor do Blogger. Ao atualizar de uma versão anterior, desbloqueie cada chave salva uma vez para habilitar o recurso. A senha mestra não é salva; a extensão mantém uma chave derivada não exportável para essa conveniência. O botão **Bloquear** apaga essa autorização e exige que você informe novamente a senha mestra antes de voltar a usar o desbloqueio automático.
 
 ## 4. Permissão opcional (links externos)
 
@@ -60,7 +60,8 @@ No popup, o botão **Permitir acesso aos sites dos links** libera a conferência
 
 ## 5. Onde os dados ficam
 
-- A chave fica **criptografada** (AES-GCM + PBKDF2) em `chrome.storage.local`; a cópia desbloqueada vive apenas na memória da sessão do navegador (`chrome.storage.session`).
+- A chave fica **criptografada** (AES-GCM + PBKDF2) em `chrome.storage.local`; a chave derivada não exportável para desbloqueio automático fica no IndexedDB do perfil do Chrome. A chave de API decifrada vive apenas na sessão do navegador (`chrome.storage.session`).
+- Ao desinstalar a extensão, o Chrome remove os dados de armazenamento associados a ela. Isso não promete apagamento forense do disco.
 - Os textos e imagens só saem do navegador quando você aciona um recurso de IA, e vão direto para o provedor escolhido.
 - Detalhes completos: [`SEGURANCA.md`](SEGURANCA.md) e [`PRIVACIDADE.md`](PRIVACIDADE.md).
 

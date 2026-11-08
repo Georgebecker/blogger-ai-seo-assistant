@@ -2,7 +2,7 @@
   "name": "blogger-ai-seo-assistant",
   "displayName": "Blogger AI SEO Assistant",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "description": "Extensão Chrome (Manifest V3) que integra SEO e acessibilidade ao editor do Blogger com IA (BYOK).",
   "scripts": {
