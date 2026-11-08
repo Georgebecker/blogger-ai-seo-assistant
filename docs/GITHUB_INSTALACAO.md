@@ -1,6 +1,6 @@
 # Instalar pelo GitHub
 
-Este guia instala a versão **1.2.0** da extensão no Google Chrome usando o arquivo publicado neste repositório. A V2.0.0 ainda está em teste local; este pacote é da versão anterior.
+Este guia instala a versão **1.2.0** da extensão no Google Chrome usando o arquivo publicado neste repositório. A V1.2.0 ainda está em teste local; este pacote é da versão anterior.
 
 ## 1. Baixar e extrair
 
