@@ -13,9 +13,7 @@ Extensão do Chrome (Manifest V3) que leva inteligência artificial para dentro 
 
 Funciona com a **sua própria chave** de IA (BYOK): **DeepSeek** ou **Google Gemini**, escolhidos no popup, com o outro podendo entrar como **reserva automática**. A chave fica guardada **criptografada** no seu navegador.
 
-> **Versão 2.0.0 para teste local:** ainda não foi publicada na Chrome Web Store. A versão da loja continua disponível pelo botão acima.
-
-> Explicação em linguagem simples, para qualquer pessoa: [`docs/ENTENDA_O_PROJETO.md`](docs/ENTENDA_O_PROJETO.md).
+> **Versão 2.0.0 para teste local:** ainda não foi publicada na Chrome Web Store. A versão da loja continua disponível pelo botão acima. Para baixar e instalar pelo GitHub a versão 1.2.0, siga o [guia ilustrado](docs/GITHUB_INSTALACAO.md). Explicação em linguagem simples: [`docs/ENTENDA_O_PROJETO.md`](docs/ENTENDA_O_PROJETO.md).
 
 ## Classificação
 
@@ -100,6 +98,7 @@ Na V1, era necessário desbloquear a chave manualmente após iniciar o navegador
 |---|---|
 | [`docs/ENTENDA_O_PROJETO.md`](docs/ENTENDA_O_PROJETO.md) | Explicação em linguagem simples (para qualquer pessoa) |
 | [`docs/INSTALACAO.md`](docs/INSTALACAO.md) | Compilar, instalar e configurar a chave |
+| [`docs/GITHUB_INSTALACAO.md`](docs/GITHUB_INSTALACAO.md) | Baixar e instalar a versão 1.2.0 pelo GitHub, com imagens |
 | [`docs/COMO_USAR.md`](docs/COMO_USAR.md) | Guia de uso no editor do Blogger |
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Como o código é organizado e como as partes conversam |
 | [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | Criptografia, permissões e o que sai do navegador |
@@ -126,7 +125,7 @@ Sugestões e problemas: <https://github.com/Georgebecker/blogger-ai-seo-assistan
 - Textos muito longos são analisados em partes de até 15 mil caracteres.
 - **Inserção automática:** em alguns casos, o Blogger pode não salvar o corpo do post inserido pela extensão; o caminho garantido é **Copiar texto** e colar no editor com Ctrl+V antes de salvar (em investigação — veja o [`DEVLOG`](docs/DEVLOG.md)).
 - Revise sempre o conteúdo sugerido pela IA antes de publicar.
-- **Capturas da interface:** pendentes; este ambiente não permite carregar e operar a extensão em um Chrome real para registrar telas fiéis.
+- **Capturas da V2:** pendentes; as imagens do [guia](docs/GITHUB_INSTALACAO.md) mostram a primeira versão.
 
 ## Licença
 

@@ -5,7 +5,8 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
-loja/
+loja/*
+!loja/assistente-ai-blogger-v1.2.0.zip
 
 # Chaves de assinatura e pacotes assinados (nunca versionar)
 *.pem
